@@ -3,8 +3,8 @@
 /** @type {import('sequelize-cli').Migration} */
 export default {
   async up (queryInterface, Sequelize) {
-    await queryInterface.createTable('Rol', {
-      id_rol: {
+    await queryInterface.createTable('TipoDoc', {
+      id_tipoDoc: {
         allowNull: false,
         autoIncrement: true,
         primaryKey: true,
@@ -28,6 +28,6 @@ export default {
   },
 
   async down (queryInterface, Sequelize) {
-    await queryInterface.dropTable('Rol');
+    await queryInterface.dropTable('TipoDoc');
   }
 };
