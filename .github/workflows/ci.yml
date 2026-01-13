@@ -49,7 +49,12 @@ jobs:
 
       - name: Run Migrations validation
         env:
+          NODE_ENV: test
+          DB_USER: postgres
+          DB_PASSWORD: password_test
+          DB_NAME: geo_api_test
           DB_HOST: localhost
+          DB_PORT: 5432
         run: |
           echo "🛠️ Ejecutando migraciones..."
           npx sequelize-cli db:migrate --env test
