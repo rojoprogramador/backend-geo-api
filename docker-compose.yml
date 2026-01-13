@@ -1,0 +1,114 @@
+# ==========================================
+# DOCKER COMPOSE PARA GEO-API
+# ==========================================
+# Docker Compose permite definir y ejecutar aplicaciones multi-contenedor
+# En este caso: App Node.js + Base de Datos PostGIS
+
+version: '3.8'
+
+# SERVICIOS = Los contenedores que vamos a crear
+services:
+
+  # ========================================
+  # SERVICIO 1: APP (Tu API Node.js)
+  # ========================================
+  app:
+    # Construye la imagen desde el Dockerfile en la carpeta actual
+    build: .
+
+    # Nombre del contenedor (opcional, pero útil para identificarlo)
+    container_name: geo-api-app
+
+    # MAPEO DE PUERTOS: puerto_tu_pc:puerto_contenedor
+    # localhost:3000 de tu PC → puerto 3000 del contenedor
+    ports:
+      - "3000:3000"
+
+    # VARIABLES DE ENTORNO
+    # Estas reemplazan tu archivo .env
+    # La app las lee dentro del contenedor
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      # IMPORTANTE: DB_HOST=db (el nombre del servicio de abajo)
+      # Docker crea una red interna donde "db" apunta al contenedor de PostgreSQL
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=geo_api_db
+      - DB_USER=postgres
+      - DB_PASSWORD=admin123
+      - JWT_SECRET=geo_api_secret_key_2024_cambiar_en_produccion
+      - JWT_EXPIRES_IN=24h
+
+    # DEPENDENCIAS
+    # Le dice a Docker: "No inicies 'app' hasta que 'db' esté listo"
+    depends_on:
+      db:
+        condition: service_healthy
+
+    # RED PERSONALIZADA
+    # Conecta este contenedor a la red "geo-net"
+    networks:
+      - geo-net
+
+    # REINICIO AUTOMÁTICO
+    # Si la app crashea, Docker la reinicia automáticamente
+    restart: unless-stopped
+
+  # ========================================
+  # SERVICIO 2: DB (PostgreSQL + PostGIS)
+  # ========================================
+  db:
+    # Usamos imagen oficial de PostGIS (PostgreSQL + extensiones geográficas)
+    # Versión 17 de PostgreSQL con PostGIS 3.5
+    image: postgis/postgis:17-3.5
+
+    container_name: geo-api-db
+
+    # MAPEO DE PUERTOS
+    # Si quieres conectarte desde tu PC (pgAdmin, DBeaver, etc.)
+    ports:
+      - "5432:5432"
+
+    # VARIABLES DE ENTORNO para configurar PostgreSQL
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=admin123
+      - POSTGRES_DB=geo_api_db
+
+    # VOLÚMENES = Persistencia de datos
+    # Los datos se guardan en tu PC, NO dentro del contenedor
+    # Si borras el contenedor, los datos NO se pierden
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - .:/app
+      - /app/node_modules
+
+    networks:
+      - geo-net
+
+    restart: unless-stopped
+
+    # HEALTHCHECK: Verifica que la DB esté realmente lista
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+# ========================================
+# VOLÚMENES (Persistencia de datos)
+# ========================================
+# Define dónde se guardan los datos de PostgreSQL
+# Docker los gestiona automáticamente
+volumes:
+  postgres_data:
+    driver: local
+
+# ========================================
+# REDES (Comunicación entre contenedores)
+# ========================================
+# Crea una red privada donde "app" y "db" pueden comunicarse
+networks:
+  geo-net:
+    driver: bridge

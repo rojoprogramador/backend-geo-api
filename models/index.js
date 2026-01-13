@@ -1,5 +1,6 @@
 import sequelize from "../config/database.js";
 
+
 //Importar modelos
 import Rol from "./Rol.js";
 import Usuario from "./Usuario.js";
