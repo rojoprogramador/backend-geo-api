@@ -42,17 +42,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Create Test Config
-        run: |
-          mkdir -p config
-          echo '{"test": {"username": "postgres", "password": "password_test", "database": "geo_api_test", "host": "localhost", "dialect": "postgres"}}' > config/config.json
-
       - name: Run Migrations validation
         env:
           NODE_ENV: test
           DB_USER: postgres
-          DB_PASSWORD: password_test
-          DB_NAME: geo_api_test
+          DB_PASSWORD: admin123
+          DB_NAME: geo_api_db
           DB_HOST: localhost
           DB_PORT: 5432
         run: |
