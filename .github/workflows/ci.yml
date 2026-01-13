@@ -1,0 +1,63 @@
+name: CI/CD Quality Gate
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+jobs:
+  test-and-analize:
+    name: Test, Migrate and SonarCloud Analysis
+    runs-on: ubuntu-latest
+
+    services:
+      db:
+        image: postgis/postgis:17-3.5
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: admin123
+          POSTGRES_DB: geo_api_db
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create Test Config
+        run: |
+          mkdir -p config
+          echo '{"test": {"username": "postgres", "password": "password_test", "database": "geo_api_test", "host": "localhost", "dialect": "postgres"}}' > config/config.json
+
+      - name: Run Migrations validation
+        env:
+          DB_HOST: localhost
+        run: |
+          echo "🛠️ Ejecutando migraciones..."
+          npx sequelize-cli db:migrate --env test
+          echo "🌱 Ejecutando seeders..."
+          npx sequelize-cli db:seed:all --env test
+
+      - name: sonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
