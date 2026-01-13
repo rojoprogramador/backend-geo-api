@@ -1,6 +1,6 @@
 # 🌍 Geo-API
 
-API REST para geolocalización y gestión de servicios, desarrollada con Node.js, Express, PostgreSQL y PostGIS.
+API REST para geolocalización y gestión de servicios, desarrollada con Node.js, Express, PostgreSQL y PostGIS. Proyecto con arquitectura escalable, CI/CD automatizado y calidad de código garantizada.
 
 ## 🚀 Tecnologías
 
@@ -8,10 +8,51 @@ API REST para geolocalización y gestión de servicios, desarrollada con Node.js
 - **Express 5** - Framework web
 - **Sequelize 6** - ORM para PostgreSQL
 - **PostgreSQL 17** - Base de datos relacional
-- **PostGIS 3.5** - Extensión geoespacial para PostgreSQL
+- **PostGIS 3.5** - Extensión geoespacial
 - **JWT** - Autenticación y autorización
 - **Bcrypt** - Encriptación de contraseñas
 - **Docker** - Contenedorización y orquestación
+- **GitHub Actions** - CI/CD automatizado
+- **SonarCloud** - Análisis de calidad de código
+
+---
+
+## 📊 Bitácora de Desarrollo y Hitos
+
+### 🛡️ Fase 3: DevOps, Calidad y CI/CD (Estado Actual)
+**Objetivo:** Automatizar pruebas y asegurar la calidad del código antes de desplegar.
+
+- [x] **Pipeline de CI/CD:** Implementación de **GitHub Actions** para validar cada commit.
+    - Configuración de entorno de pruebas con **PostGIS 17** (Dockerizado).
+    - Ejecución automatizada de migraciones y seeders.
+- [x] **Análisis de Calidad:** Integración con **SonarCloud**.
+    - Configuración de *Quality Gates* estrictos.
+    - Corrección de *Code Smells* y configuración de *New Code Definition* (30 días).
+- [x] **Seguridad de Ramas:**
+    - Protección de ramas `main` y `develop`.
+    - Bloqueo de merges si el CI falla o si SonarCloud detecta errores.
+
+### 🐳 Fase 2: Dockerización del Entorno
+**Objetivo:** Crear un entorno de desarrollo reproducible e idéntico a producción.
+
+- [x] Creación de `Dockerfile` para la aplicación Node.js.
+- [x] Orquestación con `docker-compose`.
+    - Servicio `app`: Backend API.
+    - Servicio `db`: Base de datos PostgreSQL con extensión **PostGIS** preinstalada.
+- [x] Configuración de redes y volúmenes persistentes para la BD.
+- [x] Gestión de variables de entorno seguras para Docker.
+
+### 🔐 Fase 1: Core, Base de Datos y Seguridad
+**Objetivo:** Establecer la arquitectura base y el sistema de usuarios.
+
+- [x] **Base de Datos:**
+    - Modelado de tablas: `Usuario`, `Rol`, `TipoDoc`.
+    - Migraciones y Seeders con **Sequelize CLI**.
+    - Corrección de integridad de datos (Fix: typo en columna `correo_electronico`).
+- [x] **Autenticación:**
+    - Implementación de **JWT (JSON Web Tokens)**.
+    - Hashing de contraseñas con bcrypt.
+    - Middleware de protección de rutas.
 
 ---
 
@@ -45,34 +86,6 @@ geo-api/
 ├── index.js             # Punto de entrada de la aplicación
 └── package.json         # Dependencias y scripts
 ```
-
----
-
-## ✨ Características Implementadas
-
-### Autenticación
-- ✅ JWT con expiración configurable
-- ✅ Login con email y contraseña
-- ✅ Middleware de protección de rutas
-- ✅ Encriptación de contraseñas con bcrypt
-
-### Gestión de Usuarios
-- ✅ Registro de usuarios
-- ✅ Consulta de usuarios (protegido con JWT)
-- ✅ Relación con roles y tipos de documento
-
-### Modelos Implementados
-- ✅ **Usuario**: Gestión de usuarios del sistema
-- ✅ **Rol**: Tipos de roles (Admin, Usuario, etc.)
-- ✅ **TipoDocumento**: Tipos de identificación (CC, Pasaporte, etc.)
-
-### Infraestructura
-- ✅ Dockerización completa (app + base de datos)
-- ✅ PostgreSQL 17 con PostGIS 3.5
-- ✅ Persistencia de datos con volúmenes Docker
-- ✅ Red interna para comunicación entre contenedores
-- ✅ Variables de entorno configurables
-- ✅ CORS habilitado
 
 ---
 
@@ -230,125 +243,33 @@ Authorization: Bearer <tu_token_jwt>
 
 ## 🐳 Comandos Docker Útiles
 
-### Gestión de contenedores
 ```bash
-# Arrancar servicios
-docker-compose up -d
+# Gestión básica
+docker-compose up -d              # Arrancar en segundo plano
+docker-compose logs -f app        # Ver logs en tiempo real
+docker-compose stop               # Detener servicios
+docker-compose down -v            # Eliminar todo (incluye datos)
 
-# Ver logs en tiempo real
-docker-compose logs -f
+# Desarrollo
+docker-compose restart app        # Reiniciar después de cambios
+docker-compose up --build         # Reconstruir y arrancar
 
-# Ver logs de un servicio específico
-docker-compose logs -f app
-docker-compose logs -f db
-
-# Detener servicios
-docker-compose stop
-
-# Detener y eliminar contenedores
-docker-compose down
-
-# Eliminar contenedores y volúmenes (¡cuidado, borra datos!)
-docker-compose down -v
-```
-
-### Reconstruir después de cambios
-```bash
-# Reconstruir la imagen de la app
-docker-compose build app
-
-# Reconstruir y arrancar
-docker-compose up --build
-
-# Reconstruir sin caché
-docker-compose build --no-cache app
-```
-
-### Ejecutar comandos dentro de contenedores
-```bash
-# Entrar a la terminal del contenedor de la app
-docker-compose exec app sh
-
-# Ejecutar migraciones
-docker-compose exec app npx sequelize-cli db:migrate
-
-# Crear un nuevo modelo
-docker-compose exec app npx sequelize-cli model:generate --name Producto --attributes nombre:string,precio:float
-
-# Entrar a PostgreSQL
-docker-compose exec db psql -U postgres -d geo_api_db
-
-# Verificar versión de PostGIS
-docker-compose exec db psql -U postgres -d geo_api_db -c "SELECT PostGIS_Version();"
-```
-
-### Gestión de base de datos
-```bash
-# Ver estado de la base de datos
-docker-compose exec db pg_isready
-
-# Backup de la base de datos
-docker-compose exec db pg_dump -U postgres geo_api_db > backup.sql
-
-# Restaurar backup
-docker-compose exec -T db psql -U postgres geo_api_db < backup.sql
-
-# Ver tablas (dentro de psql)
-\dt
-
-# Ver estructura de una tabla
-\d usuarios
-
-# Salir de psql
-\q
+# Base de datos
+docker-compose exec app npx sequelize-cli db:migrate     # Ejecutar migraciones
+docker-compose exec db psql -U postgres -d geo_api_db   # Acceder a PostgreSQL
+docker-compose exec db pg_dump -U postgres geo_api_db > backup.sql  # Backup
 ```
 
 ---
 
 ## 🔧 Troubleshooting
 
-### El puerto 3000 ya está en uso
-**Opción 1:** Detén el proceso que usa el puerto
-```bash
-# Windows
-netstat -ano | findstr :3000
-taskkill /PID <numero_pid> /F
-
-# Linux/Mac
-lsof -ti:3000 | xargs kill -9
-```
-
-**Opción 2:** Cambia el puerto en [docker-compose.yml](docker-compose.yml):
-```yaml
-ports:
-  - "3001:3000"  # Ahora usa localhost:3001
-```
-
-### Error "Cannot connect to database"
-1. Verifica que los contenedores estén corriendo:
-   ```bash
-   docker-compose ps
-   ```
-2. PostgreSQL tarda unos segundos en arrancar. Espera y reintenta.
-3. Revisa los logs:
-   ```bash
-   docker-compose logs db
-   ```
-
-### Los cambios en el código no se reflejan
-Docker usa caché. Reconstruye sin caché:
-```bash
-docker-compose build --no-cache app
-docker-compose up -d
-```
-
-### Quiero empezar desde cero
-Borra TODO (contenedores, volúmenes, imágenes):
-```bash
-docker-compose down -v
-docker system prune -a
-docker-compose up --build
-```
+| Problema | Solución |
+|----------|----------|
+| Puerto 3000 en uso | Cambia el puerto en [docker-compose.yml](docker-compose.yml) o detén el proceso: `netstat -ano \| findstr :3000` |
+| Error de conexión DB | Espera 10 segundos (PostgreSQL tarda en arrancar). Verifica con `docker-compose logs db` |
+| Cambios no se reflejan | Reconstruye sin caché: `docker-compose build --no-cache app` |
+| Empezar desde cero | `docker-compose down -v && docker system prune -a && docker-compose up --build` |
 
 ---
 
@@ -367,228 +288,127 @@ Usa estas credenciales para conectarte a la base de datos:
 
 ## 🔒 Seguridad para Producción
 
-⚠️ **IMPORTANTE:** Antes de desplegar en producción:
+⚠️ **Checklist antes de desplegar:**
 
-1. **Cambia las contraseñas** en [docker-compose.yml](docker-compose.yml)
-2. **Genera un JWT_SECRET seguro:**
-   ```bash
-   node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
-   ```
-3. **No expongas el puerto de PostgreSQL** (elimina `5432:5432` en docker-compose.yml)
-4. **Usa HTTPS** con un reverse proxy (nginx, traefik)
-5. **Configura backups automáticos** de la base de datos
-6. **Establece límites de recursos** en Docker:
-   ```yaml
-   deploy:
-     resources:
-       limits:
-         cpus: '0.5'
-         memory: 512M
-   ```
+- [ ] Cambiar todas las contraseñas y secretos
+- [ ] Generar JWT_SECRET seguro: `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"`
+- [ ] No exponer puerto de PostgreSQL (eliminar `5432:5432`)
+- [ ] Usar AWS RDS en lugar de contenedor DB
+- [ ] Habilitar HTTPS con reverse proxy (nginx/traefik)
+- [ ] Configurar backups automáticos
+- [ ] Establecer límites de recursos en Docker
+- [ ] Variables sensibles en AWS Secrets Manager
 
 ---
 
 ## 📊 Variables de Entorno
 
-### Para Docker (ver [docker-compose.yml](docker-compose.yml))
-```yaml
-environment:
-  - NODE_ENV=development
-  - PORT=3000
-  - DB_HOST=db
-  - DB_PORT=5432
-  - DB_NAME=geo_api_db
-  - DB_USER=postgres
-  - DB_PASSWORD=admin123
-  - JWT_SECRET=geo_api_secret_key_2024_cambiar_en_produccion
-  - JWT_EXPIRES_IN=24h
-```
-
-### Para desarrollo local (archivo `.env`)
 ```env
-DB_HOST=localhost
+# Base de Datos
+DB_HOST=localhost         # 'db' para Docker
 DB_PORT=5432
 DB_NAME=geo_api_db
 DB_USER=postgres
-DB_PASSWORD=tu_contraseña
+DB_PASSWORD=admin123      # ⚠️ Cambiar en producción
+
+# Servidor
 PORT=3000
 NODE_ENV=development
-JWT_SECRET=tu_secreto_seguro
+
+# JWT
+JWT_SECRET=tu_secreto_seguro_cambiar_en_produccion
 JWT_EXPIRES_IN=24h
 ```
 
----
-
-## 🎯 Flujo de Trabajo Recomendado
-
-```bash
-# 1. Por la mañana: arrancar servicios
-docker-compose up -d
-
-# 2. Ver logs para verificar que todo esté OK
-docker-compose logs -f
-
-# 3. Desarrollar tu código...
-# (edita archivos en tu editor)
-
-# 4. Reconstruir cuando hagas cambios importantes
-docker-compose restart app
-
-# 5. Si cambias package.json o Dockerfile
-docker-compose up --build
-
-# 6. Ejecutar migraciones nuevas
-docker-compose exec app npx sequelize-cli db:migrate
-
-# 7. Al terminar el día
-docker-compose stop
-```
+Ver configuración completa en [docker-compose.yml](docker-compose.yml)
 
 ---
 
 ## 🗄️ Acceso a la Base de Datos
 
-### En Local (Desarrollo)
-
-Puedes acceder a PostgreSQL de 3 formas:
-
-**1. Herramientas GUI (Recomendado)**
+### Herramientas Recomendadas
 - **pgAdmin**: https://www.pgadmin.org/download/
 - **DBeaver**: https://dbeaver.io/download/
-- **TablePlus**: https://tableplus.com/
+- **Línea de comandos**: `docker-compose exec db psql -U postgres -d geo_api_db`
 
-**Credenciales de conexión:**
-- Host: `localhost`
-- Puerto: `5432`
-- Usuario: `postgres`
-- Contraseña: `admin123`
-- Base de datos: `geo_api_db`
-
-**2. Línea de comandos:**
-```bash
-docker-compose exec db psql -U postgres -d geo_api_db
-```
-
-**3. Extensiones de VS Code:**
-- PostgreSQL Explorer por Cweijan
-
-📖 **Guía completa**: Ver [ACCESO-BASE-DATOS.md](ACCESO-BASE-DATOS.md)
+**Credenciales (Docker):**
+- Host: `localhost` | Puerto: `5432` | Usuario: `postgres` | Password: `admin123` | DB: `geo_api_db`
 
 ---
 
 ## ☁️ Despliegue en AWS
 
 ### Arquitectura Recomendada
-
 ```
-AWS
-├── EC2 / ECS / App Runner
-│   └── Tu app Node.js (solo contenedor de app)
-│
-└── AWS RDS
-    └── PostgreSQL 17 + PostGIS 3.5
-        - Backups automáticos
-        - Alta disponibilidad
-        - Escalable
+AWS EC2/ECS (App Node.js) → AWS RDS PostgreSQL 17 + PostGIS 3.5
 ```
 
-### ⚠️ IMPORTANTE: En producción
+### Checklist de Despliegue
+- [ ] Crear RDS PostgreSQL 17 con PostGIS
+- [ ] Configurar Security Groups (solo app puede acceder a RDS)
+- [ ] Almacenar credenciales en AWS Secrets Manager
+- [ ] Habilitar backups automáticos en RDS
+- [ ] Usar [docker-compose.prod.yml](docker-compose.prod.yml) para el deploy
+- [ ] Configurar dominio y SSL
 
-- ❌ **NO uses** el contenedor Docker para la base de datos
-- ✅ **USA** AWS RDS (PostgreSQL administrado)
-- ✅ Credenciales en AWS Secrets Manager
-- ✅ RDS sin acceso público
-- ✅ Backups automáticos habilitados
-
-### Archivos de configuración
-
-- **Producción**: [docker-compose.prod.yml](docker-compose.prod.yml)
-- **Desarrollo**: [docker-compose.yml](docker-compose.yml)
-
-### Pasos para AWS:
-
-1. **Crear RDS PostgreSQL 17**
-   - Ve a AWS RDS Console
-   - Crea instancia PostgreSQL 17
-   - Habilita PostGIS: `CREATE EXTENSION postgis;`
-
-2. **Desplegar app con RDS endpoint**
-   ```bash
-   # Usar docker-compose.prod.yml
-   docker-compose -f docker-compose.prod.yml up -d
-   ```
-
-3. **Configurar variables de entorno**
-   ```bash
-   DB_HOST=tu-instancia.region.rds.amazonaws.com
-   DB_PORT=5432
-   DB_NAME=geo_api_db
-   DB_USER=postgres
-   DB_PASSWORD=<desde AWS Secrets Manager>
-   ```
-
-📖 **Guía completa de AWS**: Ver [ACCESO-BASE-DATOS.md](ACCESO-BASE-DATOS.md#️-en-awsproducción)
+📖 **Guía completa**: [ACCESO-BASE-DATOS.md](ACCESO-BASE-DATOS.md)
 
 ---
 
-## 🚧 Próximos Pasos
+## 🚧 Roadmap
 
-- [ ] Implementar CRUD completo de roles
-- [ ] Implementar CRUD completo de tipos de documento
-- [ ] Agregar validaciones con express-validator
-- [ ] Implementar endpoints de geolocalización con PostGIS
-- [ ] Agregar paginación a las consultas
+### Fase 4: Testing y Documentación (En Progreso)
+- [ ] Implementar tests unitarios y de integración (Jest/Supertest)
+- [ ] Aumentar cobertura de código al 80%+
 - [ ] Documentar API con Swagger/OpenAPI
-- [ ] Implementar tests unitarios (Jest)
-- [ ] Agregar CI/CD con GitHub Actions
-- [ ] Configurar rate limiting
+- [ ] Configurar tests E2E
+
+### Fase 5: Funcionalidades Core
+- [ ] Implementar CRUD completo de categorías
+- [ ] Sistema de solicitudes de servicio
+- [ ] Endpoints de geolocalización con PostGIS (búsqueda por radio, rutas)
+- [ ] Agregar paginación y filtros avanzados
 - [ ] Implementar refresh tokens
+- [ ] Configurar rate limiting
+
+### Fase 6: Producción
+- [ ] Despliegue en AWS (EC2 + RDS)
+- [ ] Configurar backups automáticos
+- [ ] Implementar monitoreo y alertas
+- [ ] Configurar CDN para assets estáticos
 
 ---
 
-## 📝 Comandos Útiles de Sequelize
+## 📝 Comandos Sequelize
 
 ```bash
-# Crear nueva migración
-docker-compose exec app npx sequelize-cli migration:generate --name nombre-descriptivo
+# Migraciones
+docker-compose exec app npx sequelize-cli db:migrate              # Ejecutar
+docker-compose exec app npx sequelize-cli db:migrate:undo         # Revertir última
+docker-compose exec app npx sequelize-cli migration:generate --name descripcion
 
-# Crear nuevo modelo con migración
-docker-compose exec app npx sequelize-cli model:generate --name NombreModelo --attributes campo1:tipo1,campo2:tipo2
+# Seeders
+docker-compose exec app npx sequelize-cli db:seed:all             # Ejecutar todos
+docker-compose exec app npx sequelize-cli seed:generate --name nombre
 
-# Ejecutar migraciones pendientes
-docker-compose exec app npx sequelize-cli db:migrate
-
-# Revertir última migración
-docker-compose exec app npx sequelize-cli db:migrate:undo
-
-# Revertir todas las migraciones
-docker-compose exec app npx sequelize-cli db:migrate:undo:all
-
-# Crear seeder
-docker-compose exec app npx sequelize-cli seed:generate --name nombre-seeder
-
-# Ejecutar seeders
-docker-compose exec app npx sequelize-cli db:seed:all
+# Crear modelo
+docker-compose exec app npx sequelize-cli model:generate --name Modelo --attributes campo:tipo
 ```
-
----
-
-## 📄 Licencia
-
-ISC
 
 ---
 
 ## 👨‍💻 Contribuir
 
 1. Fork el proyecto
-2. Crea una rama para tu feature (`git checkout -b feature/nueva-funcionalidad`)
-3. Commit tus cambios (`git commit -m 'Agrega nueva funcionalidad'`)
-4. Push a la rama (`git push origin feature/nueva-funcionalidad`)
+2. Crea una rama: `git checkout -b feature/nueva-funcionalidad`
+3. Commit: `git commit -m 'feat: descripción del cambio'`
+4. Push: `git push origin feature/nueva-funcionalidad`
 5. Abre un Pull Request
+
+**Nota:** Los PR deben pasar CI/CD y SonarCloud Quality Gates antes de ser mergeados.
 
 ---
 
-## 📧 Contacto
+## 📄 Licencia
 
-Si tienes dudas o sugerencias, abre un issue en el repositorio.
+ISC
