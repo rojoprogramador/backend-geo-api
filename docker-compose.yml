@@ -25,21 +25,25 @@ services:
       - "3000:3000"
 
     # VARIABLES DE ENTORNO
-    # Estas reemplazan tu archivo .env
-    # La app las lee dentro del contenedor
+    # Docker Compose lee automáticamente el archivo .env
+    # Usa ${VARIABLE} para referenciar valores del .env
     environment:
-      - NODE_ENV=development
-      - PORT=3000
+      - NODE_ENV=${NODE_ENV}
+      - PORT=${PORT}
       # IMPORTANTE: DB_HOST=db (el nombre del servicio de abajo)
       # Docker crea una red interna donde "db" apunta al contenedor de PostgreSQL
       - DB_HOST=db
-      - DB_PORT=5432
-      - DB_NAME=geo_api_db
-      - DB_USER=postgres
-      - DB_PASSWORD=admin123
-      - JWT_SECRET=geo_api_secret_key_2024_cambiar_en_produccion
-      - JWT_EXPIRES_IN=24h
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
 
+    volumes:
+      - .:/app              # <--- Conecta tu carpeta Windows con /app en Linux
+      - /app/node_modules   # <--- Evita borrar las librerías de Linux con las de Windows
+    
     # DEPENDENCIAS
     # Le dice a Docker: "No inicies 'app' hasta que 'db' esté listo"
     depends_on:
@@ -66,27 +70,27 @@ services:
     container_name: geo-api-db
 
     # MAPEO DE PUERTOS
-    # Si quieres conectarte desde tu PC (pgAdmin, DBeaver, etc.)
+    # Puerto externo 5433 para evitar conflicto con PostgreSQL local
+    # localhost:5433 de tu PC → puerto 5432 del contenedor
     ports:
-      - "5432:5432"
+      - "5433:5432"
 
     # VARIABLES DE ENTORNO para configurar PostgreSQL
+    # Lee las credenciales del archivo .env
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=admin123
-      - POSTGRES_DB=geo_api_db
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
 
     # VOLÚMENES = Persistencia de datos
     # Los datos se guardan en tu PC, NO dentro del contenedor
     # Si borras el contenedor, los datos NO se pierden
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - .:/app
-      - /app/node_modules
 
     networks:
       - geo-net
-
+      
     restart: unless-stopped
 
     # HEALTHCHECK: Verifica que la DB esté realmente lista
