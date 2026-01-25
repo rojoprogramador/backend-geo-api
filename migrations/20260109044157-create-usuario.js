@@ -22,7 +22,7 @@ export default {
         type: Sequelize.DATEONLY,
         allowNull: false
       },
-      coreo_electronico: {
+      correo_electronico: {
         type: Sequelize.STRING,
         allowNull: false,
         unique: true

@@ -1,0 +1,14 @@
+# Archivos de Node.js que NO queremos copiar al contenedor
+node_modules
+npm-debug.log
+
+# Archivos de Git (no los necesitamos dentro)
+.git
+.gitignore
+
+# Archivos de entorno (por seguridad, usaremos variables en docker-compose)
+.env
+
+# Archivos de desarrollo
+*.md
+.vscode

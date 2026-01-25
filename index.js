@@ -1,24 +1,10 @@
 import express from 'express';
 import cors from 'cors';
-import sequelize from './config/database.js';
-
-
-// 1. IMPORTAMOS LOS MODELOS
-// Al importarlos así, obtenemos la variable para hacer las relaciones
-import Rol from './models/Rol.js';
-import Usuario from './models/Usuario.js';
-import TipoDoc from './models/TipoDoc.js';
+import { sequelize } from './models/index.js';
 
 // 2. IMPORTAMOS LAS RUTAS
 import usuarioRoutes from './routes/usuarioRoutes.js';
 import authRoutes from './routes/authRoutes.js';
-
-//Definir relaciones
-Rol.hasMany(Usuario, { foreignKey: 'id_rol' });
-Usuario.belongsTo(Rol, { foreignKey: 'id_rol' });
-
-TipoDoc.hasMany(Usuario, { foreignKey: 'id_tipoDoc' });
-Usuario.belongsTo(TipoDoc, { foreignKey: 'id_tipoDoc' });
 
 const app = express();
 const PORT = 3000;
