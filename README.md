@@ -1,6 +1,3 @@
-
-docker-compose exec app npx sequelize-cli model:generate --name MotivoCancelacion --attributes descripcion:string,tipo_usuario:string,activo:boolean
-
 # 🌍 Geo-API
 
 API REST para geolocalización y gestión de servicios, desarrollada con Node.js, Express, PostgreSQL y PostGIS. Proyecto con arquitectura escalable, CI/CD automatizado y calidad de código garantizada.
