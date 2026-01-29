@@ -4,8 +4,6 @@
 # Docker Compose permite definir y ejecutar aplicaciones multi-contenedor
 # En este caso: App Node.js + Base de Datos PostGIS
 
-version: '3.8'
-
 # SERVICIOS = Los contenedores que vamos a crear
 services:
 

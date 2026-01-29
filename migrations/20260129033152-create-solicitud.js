@@ -60,9 +60,16 @@ export default {
         onUpdate: 'CASCADE',
         onDelete: 'RESTRICT'
       },
-      estado: {
-        type: Sequelize.STRING,
-        defaultValue: 'PENDIENTE'
+      id_estado: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+        defaultValue: 1,
+        references: {
+          model: 'EstadoSolicitud',
+          key: 'id_estado'
+        },
+        onUpdate: 'CASCADE',
+        onDelete: 'RESTRICT'
       },
       prioridad: {
         type: Sequelize.STRING,
