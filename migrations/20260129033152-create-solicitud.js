@@ -34,8 +34,8 @@ export default {
         type: Sequelize.INTEGER,
         allowNull: false,
         references: {
-          model: 'Usuario',
-          key: 'id_usuario'
+          model: 'Cliente',
+          key: 'id_cliente'
         },
         onUpdate: 'CASCADE',
         onDelete: 'CASCADE'
@@ -44,8 +44,8 @@ export default {
         type: Sequelize.INTEGER,
         allowNull: true,
         references: {
-          model: 'Usuario',
-          key: 'id_usuario'
+          model: 'Tecnico',
+          key: 'id_tecnico'
         },
         onUpdate: 'CASCADE',
         onDelete: 'SET NULL'
