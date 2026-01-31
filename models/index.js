@@ -17,6 +17,10 @@ import Solicitud from "./solicitud.js";
 import Cotizacion from "./cotizacion.js";
 import Cita from "./cita.js";                  
 import MotivoCancelacion from "./motivocancelacion.js";
+import MedioPago from "./mediopago.js";
+import Servicio from "./servicio.js";
+import Calificacion from "./calificacion.js";
+import Garantia from "./garantia.js";
 
 // --- 2. DEFINIR RELACIONES ---
 
@@ -102,6 +106,52 @@ Cita.belongsTo(Tecnico, { foreignKey: 'id_tecnico', as: 'tecnico' });
 EstadoSolicitud.hasMany(Cita, { foreignKey: 'id_estado' });
 Cita.belongsTo(EstadoSolicitud, { foreignKey: 'id_estado', as: 'estado' });
 
+// === SERVICIOS (Ejecución del trabajo) ===
+
+// 1. Medio de Pago -> Servicio
+MedioPago.hasMany(Servicio, { foreignKey: 'id_medioPago' });
+Servicio.belongsTo(MedioPago, { foreignKey: 'id_medioPago', as: 'medio_pago' });
+
+// 2. Cliente -> Historial de Servicios
+Cliente.hasMany(Servicio, { foreignKey: 'id_cliente', as: 'historial_servicios' });
+Servicio.belongsTo(Cliente, { foreignKey: 'id_cliente', as: 'cliente' });
+
+// 3. Tecnico -> Servicios Realizados
+Tecnico.hasMany(Servicio, { foreignKey: 'id_tecnico', as: 'servicios_realizados' });
+Servicio.belongsTo(Tecnico, { foreignKey: 'id_tecnico', as: 'tecnico' });
+
+// 4. Subcategoria -> Servicio
+Subcategoria.hasMany(Servicio, { foreignKey: 'id_subcategoria' });
+Servicio.belongsTo(Subcategoria, { foreignKey: 'id_subcategoria', as: 'subcategoria' });
+
+// 5. Estado -> Servicio
+EstadoSolicitud.hasMany(Servicio, { foreignKey: 'id_estado' });
+Servicio.belongsTo(EstadoSolicitud, { foreignKey: 'id_estado', as: 'estado' });
+
+
+// === CALIFICACIONES ===
+
+// 1. Servicio <-> Calificación (Relación 1 a 1)
+Servicio.hasOne(Calificacion, { foreignKey: 'id_servicio', as: 'calificacion' });
+Calificacion.belongsTo(Servicio, { foreignKey: 'id_servicio', as: 'servicio' });
+
+// 2. Cliente califica
+Cliente.hasMany(Calificacion, { foreignKey: 'id_cliente', as: 'calificaciones_dadas' });
+Calificacion.belongsTo(Cliente, { foreignKey: 'id_cliente', as: 'cliente' });
+
+// 3. Tecnico es calificado
+Tecnico.hasMany(Calificacion, { foreignKey: 'id_tecnico', as: 'calificaciones_recibidas' });
+Calificacion.belongsTo(Tecnico, { foreignKey: 'id_tecnico', as: 'tecnico' });
+
+// *NOTA: Aquí NO ponemos relación con Subcategoria, tal como lo pediste.*
+
+
+// === GARANTIAS ===
+
+// 1. Servicio <-> Garantía (Relación 1 a 1)
+Servicio.hasOne(Garantia, { foreignKey: 'id_servicio', as: 'garantia' });
+Garantia.belongsTo(Servicio, { foreignKey: 'id_servicio', as: 'servicio' });
+
 // --- 3. EXPORTAR TODO ---
 export {
     sequelize,
@@ -120,5 +170,9 @@ export {
     Solicitud,
     Cotizacion,
     Cita,          
-    MotivoCancelacion
+    MotivoCancelacion,
+    MedioPago,
+    Servicio,
+    Calificacion,
+    Garantia
 };
