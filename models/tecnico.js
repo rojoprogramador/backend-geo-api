@@ -22,28 +22,38 @@ const Tecnico = sequelize.define('Tecnico', {
     url_docId: {
         type: DataTypes.STRING
     },
-    maneja_radio: {
-        type: DataTypes.BOOLEAN,
-        defaultValue: false
-    },
-    radio_cobertura: {
-        type: DataTypes.INTEGER
-    },
     ubicacion_base: {
         type: DataTypes.GEOMETRY('POINT', 4326),
         allowNull: true
     },
+    radio_cobertura_km: {
+        type: DataTypes.INTEGER,
+        defaultValue: 10
+    },
+    disponibilidad_horaria: {
+        type: DataTypes.JSON,
+        allowNull: true
+    },
+    disponible_inmediato: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: true
+    },
     prom_calificacion: {
         type: DataTypes.FLOAT,
-        defaultValue: 0
+        defaultValue: 0.0
     },
-    estado: {
-        type: DataTypes.STRING,
-        defaultValue: 'activo'
+    estado_validacion: {
+        type: DataTypes.ENUM('PENDIENTE_VALIDACION', 'ACTIVO', 'SUSPENDIDO', 'RECHAZADO'),
+        allowNull: false,
+        defaultValue: 'PENDIENTE_VALIDACION'
     },
-    validado: {
-        type: DataTypes.BOOLEAN,
-        defaultValue: false
+    fecha_validacion: {
+        type: DataTypes.DATE,
+        allowNull: true
+    },
+    validado_por: {
+        type: DataTypes.INTEGER,
+        allowNull: true
     }
 }, {
     tableName: 'Tecnico',

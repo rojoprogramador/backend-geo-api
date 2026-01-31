@@ -72,8 +72,15 @@ export default {
         onDelete: 'RESTRICT'
       },
       prioridad: {
-        type: Sequelize.STRING,
+        type: Sequelize.ENUM('BAJA', 'MEDIA', 'ALTA', 'URGENTE'),
+        allowNull: false,
         defaultValue: 'MEDIA'
+      },
+      tipo_servicio: {
+        type: Sequelize.ENUM('INMEDIATO', 'PROGRAMADO'),
+        allowNull: false,
+        defaultValue: 'PROGRAMADO',
+        comment: 'INMEDIATO: requiere atención en 1-2h, PROGRAMADO: se coordina fecha/hora'
       },
       createdAt: {
         allowNull: false,

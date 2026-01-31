@@ -11,15 +11,6 @@ const Cita = sequelize.define('Cita', {
         type: DataTypes.INTEGER,
         allowNull: false
     },
-    id_cliente: {
-        type: DataTypes.INTEGER,
-        allowNull: false
-    },
-    id_tecnico: {
-        type: DataTypes.INTEGER,
-        allowNull: false
-    },
-    // --- id_subcategoria ELIMINADO ---
     fecha_cita: {
         type: DataTypes.DATE,
         allowNull: false
@@ -30,6 +21,10 @@ const Cita = sequelize.define('Cita', {
     },
     id_estado: {
         type: DataTypes.INTEGER
+    },
+    id_motivo_cancelacion: {
+        type: DataTypes.INTEGER,
+        allowNull: true
     }
 }, {
     tableName: 'Cita',

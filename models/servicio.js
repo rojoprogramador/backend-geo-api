@@ -7,6 +7,10 @@ const Servicio = sequelize.define('Servicio', {
         primaryKey: true,
         autoIncrement: true
     },
+    id_solicitud: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
     id_cliente: {
         type: DataTypes.INTEGER,
         allowNull: false

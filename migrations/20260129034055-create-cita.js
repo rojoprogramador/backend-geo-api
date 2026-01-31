@@ -13,33 +13,13 @@ export default {
         type: Sequelize.INTEGER,
         allowNull: false,
         references: {
-          model: 'Solicitud', 
+          model: 'Solicitud',
           key: 'id_solicitud'
         },
         onUpdate: 'CASCADE',
         onDelete: 'CASCADE'
       },
-      // 2. Relación con CLIENTE (Tabla Cliente)
-      id_cliente: {
-        type: Sequelize.INTEGER,
-        allowNull: false,
-        references: {
-          model: 'Cliente', 
-          key: 'id_cliente'
-        },
-        onUpdate: 'CASCADE'
-      },
-      // 3. Relación con TÉCNICO (Tabla Tecnico)
-      id_tecnico: {
-        type: Sequelize.INTEGER,
-        allowNull: false,
-        references: {
-          model: 'Tecnico', 
-          key: 'id_tecnico'
-        },
-        onUpdate: 'CASCADE'
-      },
-            fecha_cita: {
+      fecha_cita: {
         type: Sequelize.DATE,
         allowNull: false
       },
@@ -52,10 +32,21 @@ export default {
       id_estado: {
         type: Sequelize.INTEGER,
         references: {
-            model: 'EstadoSolicitud', 
-            key: 'id_estado'
+          model: 'EstadoSolicitud',
+          key: 'id_estado'
         },
         onUpdate: 'CASCADE'
+      },
+      // 6. Motivo de cancelación (opcional)
+      id_motivo_cancelacion: {
+        type: Sequelize.INTEGER,
+        allowNull: true,
+        references: {
+          model: 'MotivoCancelacion',
+          key: 'id_motivo'
+        },
+        onUpdate: 'CASCADE',
+        onDelete: 'SET NULL'
       },
       createdAt: {
         allowNull: false,

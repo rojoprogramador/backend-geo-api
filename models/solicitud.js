@@ -25,7 +25,16 @@ const Solicitud = sequelize.define('Solicitud', {
         type: DataTypes.DATE,
         defaultValue: DataTypes.NOW
     },
-    prioridad: DataTypes.STRING,
+    prioridad: {
+        type: DataTypes.ENUM('BAJA', 'MEDIA', 'ALTA', 'URGENTE'),
+        allowNull: false,
+        defaultValue: 'MEDIA'
+    },
+    tipo_servicio: {
+        type: DataTypes.ENUM('INMEDIATO', 'PROGRAMADO'),
+        allowNull: false,
+        defaultValue: 'PROGRAMADO'
+    },
 
     // Definición explícita de llaves foráneas
     id_cliente: {

@@ -9,6 +9,18 @@ export default {
         primaryKey: true,
         type: Sequelize.INTEGER
       },
+      // FK Solicitud (Trazabilidad: de qué solicitud proviene este servicio)
+      id_solicitud: {
+        type: Sequelize.INTEGER,
+        allowNull: true,
+        references: {
+          model: 'Solicitud',
+          key: 'id_solicitud'
+        },
+        onUpdate: 'CASCADE',
+        onDelete: 'SET NULL',
+        comment: 'Solicitud de origen (puede ser NULL si es servicio directo)'
+      },
       // FK Cliente
       id_cliente: {
         type: Sequelize.INTEGER,

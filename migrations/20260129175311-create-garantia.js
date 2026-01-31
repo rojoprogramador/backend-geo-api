@@ -9,8 +9,19 @@ export default {
         primaryKey: true,
         type: Sequelize.INTEGER
       },
+      id_servicio: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+        unique: true, // Relación 1:1 - Un servicio tiene UNA garantía
+        references: {
+          model: 'Servicio',
+          key: 'id_servicio'
+        },
+        onUpdate: 'CASCADE',
+        onDelete: 'CASCADE'
+      },
       tiempo_validez: {
-        type: Sequelize.STRING // 1 mes 
+        type: Sequelize.STRING // Ej: "30 días", "6 meses"
       },
       fecha_expiracion: {
         type: Sequelize.DATE

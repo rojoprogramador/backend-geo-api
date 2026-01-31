@@ -36,29 +36,54 @@ export default {
       url_docId: {
         type: Sequelize.STRING
       },
-      maneja_radio: {
-        type: Sequelize.BOOLEAN,
-        defaultValue: false
-      },
-      radio_cobertura: {
-        type: Sequelize.INTEGER
-      },
-      //POSTGIS: Ubicacion base del tecnico
+      // POSTGIS: Ubicacion base del tecnico
       ubicacion_base: {
         type: Sequelize.GEOMETRY('POINT', 4326),
         allowNull: true
       },
+      // Radio de cobertura en kilómetros
+      radio_cobertura_km: {
+        type: Sequelize.INTEGER,
+        defaultValue: 10,
+        comment: 'Radio máximo en km que el técnico acepta viajar'
+      },
+      // Disponibilidad horaria (JSON)
+      disponibilidad_horaria: {
+        type: Sequelize.JSON,
+        allowNull: true,
+        comment: 'Ej: {"lunes": ["08:00-12:00", "14:00-18:00"], "martes": ["09:00-17:00"]}'
+      },
+      // ¿Acepta servicios inmediatos? (en 1-2 horas)
+      disponible_inmediato: {
+        type: Sequelize.BOOLEAN,
+        defaultValue: true
+      },
+      // Promedio de calificaciones
       prom_calificacion: {
         type: Sequelize.FLOAT,
-        defaultValue: 0 
+        defaultValue: 0.0
       },
-      estado: {
-        type: Sequelize.STRING,
-        defaultValue: 'activo' 
+      // Estado de validación del técnico por admin
+      estado_validacion: {
+        type: Sequelize.ENUM('PENDIENTE_VALIDACION', 'ACTIVO', 'SUSPENDIDO', 'RECHAZADO'),
+        allowNull: false,
+        defaultValue: 'PENDIENTE_VALIDACION'
       },
-      validado: {
-        type: Sequelize.BOOLEAN,
-        defaultValue: false 
+      // Fecha en que fue validado por admin
+      fecha_validacion: {
+        type: Sequelize.DATE,
+        allowNull: true
+      },
+      // Admin que validó al técnico
+      validado_por: {
+        type: Sequelize.INTEGER,
+        allowNull: true,
+        references: {
+          model: 'Usuario',
+          key: 'id_usuario'
+        },
+        onUpdate: 'CASCADE',
+        onDelete: 'SET NULL'
       },
       createdAt: {
         allowNull: false,
