@@ -33,7 +33,7 @@ export default {
   async down(queryInterface, Sequelize) {
     await queryInterface.bulkDelete('Ciudad', null, {});
     await queryInterface.bulkDelete('Pais', null, {});
-    await queryInterface.bulkDelete('TipoDocs', null, {});
-    await queryInterface.bulkDelete('Rols', null, {});
+    await queryInterface.bulkDelete('TipoDoc', null, {});
+    await queryInterface.bulkDelete('Rol', null, {});
   }
 };
