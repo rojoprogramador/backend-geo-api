@@ -10,7 +10,14 @@ export default {
         type: Sequelize.INTEGER
       },
       id_tecnico: {
-        type: Sequelize.INTEGER
+        type: Sequelize.INTEGER,
+        allowNull: false,
+        references: {
+          model: 'Tecnico',
+          key: 'id_tecnico'
+        },
+        onUpdate: 'CASCADE',
+        onDelete: 'CASCADE'
       },
       id_subcategoria: {
         type: Sequelize.INTEGER,

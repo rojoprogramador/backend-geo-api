@@ -50,7 +50,9 @@ export default {
         onDelete: 'CASCADE'
       },
       estado: {
-        type: Sequelize.STRING
+        type: Sequelize.ENUM('PENDIENTE', 'ACEPTADA', 'RECHAZADA'),
+        allowNull: false,
+        defaultValue: 'PENDIENTE'
       },
       createdAt: {
         allowNull: false,
