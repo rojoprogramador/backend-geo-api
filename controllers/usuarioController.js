@@ -3,7 +3,65 @@ import Rol from "../models/Rol.js";
 import TipoDoc from "../models/TipoDoc.js";
 import bcrypt from "bcrypt";
 
-// Funcion para obtener todos los usuarios
+/**
+ * @swagger
+ * /usuarios:
+ *   get:
+ *     summary: Obtener todos los usuarios del sistema
+ *     description: Lista completa de usuarios con sus roles y tipos de documento. **Solo Administradores**.
+ *     tags: [Usuarios]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Lista de usuarios obtenida exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 allOf:
+ *                   - $ref: '#/components/schemas/Usuario'
+ *                   - type: object
+ *                     properties:
+ *                       Rol:
+ *                         type: object
+ *                         properties:
+ *                           descripcion:
+ *                             type: string
+ *                             example: Administrador
+ *                       TipoDoc:
+ *                         type: object
+ *                         properties:
+ *                           descripcion:
+ *                             type: string
+ *                             example: Cédula de Ciudadanía
+ *             example:
+ *               - id_usuario: 1
+ *                 nombre: Admin
+ *                 apellido: Principal
+ *                 correo_electronico: admin@geo-api.com
+ *                 telefono: "3001234567"
+ *                 Rol:
+ *                   descripcion: Administrador
+ *                 TipoDoc:
+ *                   descripcion: Cédula de Ciudadanía
+ *               - id_usuario: 2
+ *                 nombre: Juan
+ *                 apellido: Pérez
+ *                 correo_electronico: juan@example.com
+ *                 telefono: "3009876543"
+ *                 Rol:
+ *                   descripcion: Cliente
+ *                 TipoDoc:
+ *                   descripcion: Cédula de Ciudadanía
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       403:
+ *         $ref: '#/components/responses/ForbiddenError'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
 export const getUsuarios = async ( req, res ) => {
     try {
         const usuarios = await Usuario.findAll({
@@ -21,7 +79,81 @@ export const getUsuarios = async ( req, res ) => {
     }
 };
 
-// Post: Funcion para crear un nuevo usuario
+/**
+ * @swagger
+ * /usuarios:
+ *   post:
+ *     summary: Crear un nuevo usuario (Registro público)
+ *     description: Endpoint público para registrar nuevos usuarios (Clientes o Técnicos). La contraseña se encripta automáticamente con bcrypt.
+ *     tags: [Usuarios]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Usuario'
+ *           examples:
+ *             cliente:
+ *               summary: Registro de Cliente
+ *               value:
+ *                 nombre: María
+ *                 apellido: González
+ *                 fecha_nacimiento: "1995-03-20"
+ *                 correo_electronico: maria.gonzalez@example.com
+ *                 telefono: "3101234567"
+ *                 contraseña: MiPassword123!
+ *                 id_rol: 2
+ *                 id_tipoDoc: 1
+ *                 num_identificacion: "1098765432"
+ *             tecnico:
+ *               summary: Registro de Técnico
+ *               value:
+ *                 nombre: Carlos
+ *                 apellido: Ramírez
+ *                 fecha_nacimiento: "1988-07-15"
+ *                 correo_electronico: carlos.ramirez@example.com
+ *                 telefono: "3159876543"
+ *                 contraseña: TecnicoPass123!
+ *                 id_rol: 3
+ *                 id_tipoDoc: 1
+ *                 num_identificacion: "1087654321"
+ *     responses:
+ *       201:
+ *         description: Usuario creado exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Usuario creado con éxito
+ *                 usuario:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       example: 5
+ *                     nombre:
+ *                       type: string
+ *                       example: María
+ *                     correo_electronico:
+ *                       type: string
+ *                       example: maria.gonzalez@example.com
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       409:
+ *         description: El correo electrónico ya está registrado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               success: false
+ *               message: El correo electrónico ya está registrado
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
 export const createUsuario = async ( req, res ) => {
     try {
         // Extraer datos del cuerpo de la solicitud (body) de la petición

@@ -6,6 +6,62 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+/**
+ * @swagger
+ * /auth/login:
+ *   post:
+ *     summary: Iniciar sesión en el sistema
+ *     description: Autentica un usuario mediante correo electrónico y contraseña, retornando un token JWT válido por 24 horas
+ *     tags: [Autenticación]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/LoginRequest'
+ *           examples:
+ *             admin:
+ *               summary: Login como Administrador
+ *               value:
+ *                 correo_electronico: admin@geo-api.com
+ *                 contraseña: Admin123!
+ *             cliente:
+ *               summary: Login como Cliente
+ *               value:
+ *                 correo_electronico: cliente@example.com
+ *                 contraseña: Cliente123!
+ *             tecnico:
+ *               summary: Login como Técnico
+ *               value:
+ *                 correo_electronico: tecnico@example.com
+ *                 contraseña: Tecnico123!
+ *     responses:
+ *       200:
+ *         description: Autenticación exitosa
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/LoginResponse'
+ *       401:
+ *         description: Credenciales inválidas (usuario no encontrado o contraseña incorrecta)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             examples:
+ *               usuario_no_encontrado:
+ *                 summary: Usuario no existe
+ *                 value:
+ *                   success: false
+ *                   message: Credenciales inválidas, usuario no encontrado
+ *               contraseña_incorrecta:
+ *                 summary: Contraseña incorrecta
+ *                 value:
+ *                   success: false
+ *                   message: Credenciales inválidas, contraseña incorrecta
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
 export const login = async ( req, res ) => {
 
     try {
