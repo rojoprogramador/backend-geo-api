@@ -43,14 +43,16 @@ export default {
         type: Sequelize.INTEGER,
         allowNull: false,
         references: {
-          model: 'Usuario',
-          key: 'id_usuario'
+          model: 'Tecnico',
+          key: 'id_tecnico'
         },
         onUpdate: 'CASCADE',
         onDelete: 'CASCADE'
       },
       estado: {
-        type: Sequelize.STRING
+        type: Sequelize.ENUM('PENDIENTE', 'ACEPTADA', 'RECHAZADA'),
+        allowNull: false,
+        defaultValue: 'PENDIENTE'
       },
       createdAt: {
         allowNull: false,

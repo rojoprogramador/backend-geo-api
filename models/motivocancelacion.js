@@ -10,7 +10,7 @@ const MotivoCancelacion = sequelize.define('MotivoCancelacion', {
     descripcion: DataTypes.STRING,
     activo: DataTypes.BOOLEAN
 }, {
-    tableName: 'Motivo_Cancelacion',
+    tableName: 'MotivoCancelacion',
     timestamps: true
 });
 
