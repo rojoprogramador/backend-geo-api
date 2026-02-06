@@ -2,43 +2,37 @@
 /** @type {import('sequelize-cli').Migration} */
 export default {
   async up(queryInterface, Sequelize) {
-    await queryInterface.createTable('Especialidad', {
-      id_especialidad: {
+    await queryInterface.createTable('Cliente', {
+      id_cliente: {
         allowNull: false,
         autoIncrement: true,
         primaryKey: true,
         type: Sequelize.INTEGER
       },
-      id_tecnico: {
-        type: Sequelize.INTEGER
-      },
-      id_subcategoria: {
+      id_usuario: {
         type: Sequelize.INTEGER,
         allowNull: false,
+        unique: true,
         references: {
-          model: 'Subcategoria',
-          key: 'id_subcategoria'
+          model: 'Usuario',
+          key: 'id_usuario'
         },
         onUpdate: 'CASCADE',
         onDelete: 'CASCADE'
       },
-      experiencia: {
-        type: Sequelize.STRING
-      },
-      precio_estimado: {
-        type: Sequelize.DECIMAL
-      },
       createdAt: {
         allowNull: false,
-        type: Sequelize.DATE
+        type: Sequelize.DATE,
+        defaultValue: Sequelize.fn('NOW')
       },
       updatedAt: {
         allowNull: false,
-        type: Sequelize.DATE
+        type: Sequelize.DATE,
+        defaultValue: Sequelize.fn('NOW')
       }
     });
   },
   async down(queryInterface, Sequelize) {
-    await queryInterface.dropTable('Especialidad');
+    await queryInterface.dropTable('Cliente');
   }
 };

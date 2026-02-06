@@ -67,7 +67,9 @@ geo-api/
 ├── controllers/         # Controladores de negocio
 │   ├── authController.js    # Login y autenticación
 │   └── usuarioController.js # CRUD de usuarios
-├── middleware/          # Middlewares personalizados
+├── middleware/          # M
+
+
 │   └── authMiddleware.js    # Verificación de JWT
 ├── migrations/          # Migraciones de Sequelize
 │   ├── 20250101-create-rol.js
