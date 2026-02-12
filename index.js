@@ -7,6 +7,14 @@ import { swaggerSpec } from './docs/swagger/swagger.js';
 // 2. IMPORTAMOS LAS RUTAS
 import usuarioRoutes from './routes/usuarioRoutes.js';
 import authRoutes from './routes/authRoutes.js';
+import clienteRoutes from './routes/clienteRoutes.js';
+import tecnicoRoutes from './routes/tecnicoRoutes.js';
+import categoriaRoutes from './routes/categoriaRoutes.js';
+import subcategoriaRoutes from './routes/subcategoriaRoutes.js';
+import solicitudRoutes from './routes/solicitudRoutes.js';
+import cotizacionRoutes from './routes/cotizacionRoutes.js';
+import calificacionRoutes from './routes/calificacionRoutes.js';
+import servicioRoutes from './routes/servicioRoutes.js';
 
 const app = express();
 const PORT = 3000;
@@ -37,6 +45,14 @@ app.get('/api-docs.json', (req, res) => {
 // Esto significa que todas las rutas de usuario empezarán por /api/usuarios
 app.use('/api/usuarios', usuarioRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/clientes', clienteRoutes);
+app.use('/api/tecnicos', tecnicoRoutes);
+app.use('/api/categorias', categoriaRoutes);
+app.use('/api/subcategorias', subcategoriaRoutes);
+app.use('/api/solicitudes', solicitudRoutes);
+app.use('/api/cotizaciones', cotizacionRoutes);
+app.use('/api/calificaciones', calificacionRoutes);
+app.use('/api/servicios', servicioRoutes);
 
 // 4. RUTA DE PRUEBA
 app.get('/', (req, res) => {
