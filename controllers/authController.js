@@ -155,7 +155,7 @@ export const login = async ( req, res ) => {
  *       - Al menos 1 letra mayúscula
  *       - Al menos 1 letra minúscula
  *       - Al menos 1 dígito numérico
- *       - Al menos 1 carácter especial (ej: `!`, `@`, `#`, `$`, `%`)
+ *       - Al menos 1 carácter especial (ej: !, @, #, $, %)
  *     tags: [Autenticación]
  *     security:
  *       - bearerAuth: []
