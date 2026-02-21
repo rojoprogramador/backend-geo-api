@@ -268,12 +268,12 @@ const router = Router();
 router.post('/', verifyToken, permitirRoles('Tecnico'), crearCotizacion);
 
 // GET /api/cotizaciones/solicitud/:id_solicitud — HU-12: Cliente ve y compara cotizaciones
-router.get('/solicitud/:id_solicitud', verifyToken, permitirRoles('Cliente'), obtenerCotizacionesSolicitud);
+router.get('/solicitud/:id_solicitud', verifyToken, permitirRoles('CLIENTE'), obtenerCotizacionesSolicitud);
 
 // PUT /api/cotizaciones/:id/aceptar — HU-12: Cliente acepta una cotización
-router.put('/:id/aceptar', verifyToken, permitirRoles('Cliente'), aceptarCotizacion);
+router.put('/:id/aceptar', verifyToken, permitirRoles('CLIENTE'), aceptarCotizacion);
 
 // PUT /api/cotizaciones/:id/rechazar — Cliente rechaza una cotización individual
-router.put('/:id/rechazar', verifyToken, permitirRoles('Cliente'), rechazarCotizacion);
+router.put('/:id/rechazar', verifyToken, permitirRoles('CLIENTE'), rechazarCotizacion);
 
 export default router;

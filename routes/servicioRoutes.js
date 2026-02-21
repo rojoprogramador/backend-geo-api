@@ -194,16 +194,16 @@ const router = Router();
 // ---------------------------------------------------------------------------
 
 // PUT /api/servicios/iniciar/:id_solicitud — HU-16: Técnico inicia el servicio
-router.put('/iniciar/:id_solicitud', verifyToken, permitirRoles('Tecnico'), iniciarServicio);
+router.put('/iniciar/:id_solicitud', verifyToken, permitirRoles('TECNICO'), iniciarServicio);
 
 // GET /api/servicios/tecnico/mis-servicios — HU-16: Historial de servicios del técnico
-router.get('/tecnico/mis-servicios', verifyToken, permitirRoles('Tecnico'), obtenerServiciosPorTecnico);
+router.get('/tecnico/mis-servicios', verifyToken, permitirRoles('TECNICO'), obtenerServiciosPorTecnico);
 
 // GET /api/servicios/cliente/mis-servicios — HU-16: Historial de servicios del cliente
-router.get('/cliente/mis-servicios', verifyToken, permitirRoles('Cliente'), obtenerServiciosPorCliente);
+router.get('/cliente/mis-servicios', verifyToken, permitirRoles('CLIENTE'), obtenerServiciosPorCliente);
 
 // PUT /api/servicios/:id/finalizar — HU-16: Técnico finaliza el servicio y registra pago
-router.put('/:id/finalizar', verifyToken, permitirRoles('Tecnico'), finalizarServicio);
+router.put('/:id/finalizar', verifyToken, permitirRoles('TECNICO'), finalizarServicio);
 
 // GET /api/servicios/:id — HU-16: Ver detalle de un servicio (Cliente, Técnico o Admin)
 router.get('/:id', verifyToken, obtenerServicioPorId);

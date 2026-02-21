@@ -496,16 +496,16 @@ const router = Router();
 // ---------------------------------------------------------------------------
 
 // POST /api/solicitudes/inmediata — HU-09: Crear solicitud de servicio inmediato
-router.post('/inmediata', verifyToken, permitirRoles('Cliente'), crearSolicitudInmediata);
+router.post('/inmediata', verifyToken, permitirRoles('CLIENTE'), crearSolicitudInmediata);
 
 // POST /api/solicitudes/programada — HU-10: Crear solicitud de servicio programado
-router.post('/programada', verifyToken, permitirRoles('Cliente'), crearSolicitudProgramada);
+router.post('/programada', verifyToken, permitirRoles('CLIENTE'), crearSolicitudProgramada);
 
 // GET /api/solicitudes/mis-solicitudes — Listar solicitudes del cliente autenticado
-router.get('/mis-solicitudes', verifyToken, permitirRoles('Cliente'), obtenerMisSolicitudes);
+router.get('/mis-solicitudes', verifyToken, permitirRoles('CLIENTE'), obtenerMisSolicitudes);
 
 // GET /api/solicitudes/tecnico/pendientes — Solicitudes pendientes para el técnico
-router.get('/tecnico/pendientes', verifyToken, permitirRoles('Tecnico'), obtenerSolicitudesTecnico);
+router.get('/tecnico/pendientes', verifyToken, permitirRoles('TECNICO'), obtenerSolicitudesTecnico);
 
 // GET /api/solicitudes/motivos-cancelacion — HU-13: Listar motivos de cancelación activos
 // IMPORTANTE: debe ir ANTES de /:id para que Express no lo interprete como id='motivos-cancelacion'
@@ -515,6 +515,6 @@ router.get('/motivos-cancelacion', verifyToken, obtenerMotivosCancelacion);
 router.get('/:id', verifyToken, obtenerSolicitudPorId);
 
 // PUT /api/solicitudes/:id/cancelar — HU-13: Cancelar una solicitud propia (solo Cliente)
-router.put('/:id/cancelar', verifyToken, permitirRoles('Cliente'), cancelarSolicitud);
+router.put('/:id/cancelar', verifyToken, permitirRoles('CLIENTE'), cancelarSolicitud);
 
 export default router;

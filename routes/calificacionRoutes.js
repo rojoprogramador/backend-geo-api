@@ -340,12 +340,12 @@ const router = Router();
 // ---------------------------------------------------------------------------
 
 // POST /api/calificaciones — HU-17: Cliente califica un servicio completado
-router.post('/', verifyToken, permitirRoles('Cliente'), crearCalificacion);
+router.post('/', verifyToken, permitirRoles('CLIENTE'), crearCalificacion);
 
 // GET /api/calificaciones/tecnico/mi-promedio — Técnico ve sus propias estadísticas
 // NOTA: Esta ruta estática DEBE estar ANTES de /tecnico/:id_tecnico para evitar
 //       que Express interprete "mi-promedio" como un valor de :id_tecnico.
-router.get('/tecnico/mi-promedio', verifyToken, permitirRoles('Tecnico'), obtenerMiCalificacionComoTecnico);
+router.get('/tecnico/mi-promedio', verifyToken, permitirRoles('TECNICO'), obtenerMiCalificacionComoTecnico);
 
 // GET /api/calificaciones/tecnico/:id_tecnico — HU-18: Ver calificaciones de un técnico (paginado)
 router.get('/tecnico/:id_tecnico', verifyToken, obtenerCalificacionesTecnico);
