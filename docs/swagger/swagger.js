@@ -592,8 +592,16 @@ Node.js 20 | Express 5 | PostgreSQL 17 + PostGIS 3.5 | Sequelize ORM
         description: 'Gestión de perfiles de clientes'
       },
       {
-        name: 'Técnicos',
+        name: 'Tecnicos',
         description: 'Registro, validación, especialidades y disponibilidad de técnicos'
+      },
+      {
+        name: 'Categorías',
+        description: 'CRUD de categorías de servicios (Admin)'
+      },
+      {
+        name: 'Subcategorías',
+        description: 'CRUD de subcategorías de servicios (Admin)'
       },
       {
         name: 'Solicitudes',
@@ -604,28 +612,28 @@ Node.js 20 | Express 5 | PostgreSQL 17 + PostGIS 3.5 | Sequelize ORM
         description: 'Enviar, aceptar y rechazar cotizaciones de técnicos'
       },
       {
-        name: 'Citas',
-        description: 'Programar y gestionar citas de servicio'
-      },
-      {
         name: 'Servicios',
         description: 'Gestión de servicios activos y completados'
-      },
-      {
-        name: 'Transacciones',
-        description: 'Gestión de pagos y billetera de técnicos'
       },
       {
         name: 'Calificaciones',
         description: 'Sistema de ratings y comentarios bidireccional'
       },
       {
-        name: 'Geolocalización',
-        description: 'Búsqueda de técnicos cercanos usando PostGIS'
-      },
-      {
         name: 'Admin',
         description: 'Endpoints administrativos (validación de técnicos, reportes)'
+      },
+      {
+        name: 'Citas',
+        description: '(Pendiente de implementación) Programar y gestionar citas de servicio'
+      },
+      {
+        name: 'Transacciones',
+        description: '(Pendiente de implementación) Gestión de pagos y billetera de técnicos'
+      },
+      {
+        name: 'Geolocalización',
+        description: '(Pendiente de implementación) Búsqueda de técnicos cercanos usando PostGIS'
       }
     ]
   },
