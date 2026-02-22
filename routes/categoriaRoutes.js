@@ -69,16 +69,16 @@ router.get('/:id', obtenerCategoriaPorId);
 // ---------------------------------------------------------------------------
 // POST /api/categorias — Solo Administradores
 // ---------------------------------------------------------------------------
-router.post('/', verifyToken, permitirRoles('ADMINISTRADOR'), crearCategoria);
+router.post('/', verifyToken, permitirRoles('ADMIN'), crearCategoria);
 
 // ---------------------------------------------------------------------------
 // PUT /api/categorias/:id — Solo Administradores
 // ---------------------------------------------------------------------------
-router.put('/:id', verifyToken, permitirRoles('ADMINISTRADOR'), actualizarCategoria);
+router.put('/:id', verifyToken, permitirRoles('ADMIN'), actualizarCategoria);
 
 // ---------------------------------------------------------------------------
 // DELETE /api/categorias/:id — Solo Administradores
 // ---------------------------------------------------------------------------
-router.delete('/:id', verifyToken, permitirRoles('ADMINISTRADOR'), eliminarCategoria);
+router.delete('/:id', verifyToken, permitirRoles('ADMIN'), eliminarCategoria);
 
 export default router;

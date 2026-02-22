@@ -221,7 +221,7 @@ Node.js 20 | Express 5 | PostgreSQL 17 + PostGIS 3.5 | Sequelize ORM
                 },
                 rol: {
                   type: 'string',
-                  example: 'Administrador'
+                  example: 'ADMIN'
                 }
               }
             }

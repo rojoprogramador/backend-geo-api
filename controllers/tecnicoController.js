@@ -274,13 +274,13 @@ export const registrarTecnico = async (req, res) => {
         // 7. Obtener el id del rol 'Tecnico' desde la tabla Rol
         // ----------------------------------------------------------------
         const rolTecnico = await Rol.findOne({
-            where: { descripcion: 'Tecnico' },
+            where: { descripcion: 'TECNICO' },
             transaction: t,
         });
 
         if (!rolTecnico) {
             await t.rollback();
-            logger.error('registrarTecnico: El rol "Tecnico" no existe en la tabla Rol');
+            logger.error('registrarTecnico: El rol "TECNICO" no existe en la tabla Rol');
             throw new Error('Configuracion de roles incorrecta en el servidor');
         }
 
@@ -454,7 +454,7 @@ export const obtenerPerfilTecnico = async (req, res) => {
         // ----------------------------------------------------------------
         // 1. Verificar que el usuario autenticado tiene rol Tecnico
         // ----------------------------------------------------------------
-        if (req.usuario.rol !== 'Tecnico') {
+        if (req.usuario.rol !== 'TECNICO') {
             throw new ForbiddenError('Esta ruta es exclusiva para técnicos');
         }
 
@@ -645,7 +645,7 @@ export const actualizarPerfilTecnico = async (req, res) => {
         // ----------------------------------------------------------------
         // 1. Verificar rol
         // ----------------------------------------------------------------
-        if (req.usuario.rol !== 'Tecnico') {
+        if (req.usuario.rol !== 'TECNICO') {
             await t.rollback();
             throw new ForbiddenError('Esta ruta es exclusiva para técnicos');
         }

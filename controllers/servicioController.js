@@ -1341,7 +1341,7 @@ export const obtenerServicioPorId = async (req, res) => {
         // ----------------------------------------------------------------
         const rol = req.usuario.rol;
 
-        if (rol === 'Cliente') {
+        if (rol === 'CLIENTE') {
             // Verificar que el cliente autenticado sea el dueño del servicio
             const cliente = await Cliente.findOne({
                 where: { id_usuario: req.usuario.id_usuario },
@@ -1349,7 +1349,7 @@ export const obtenerServicioPorId = async (req, res) => {
             if (!cliente || servicio.id_cliente !== cliente.id_cliente) {
                 throw new ForbiddenError('No tienes permiso para ver este servicio');
             }
-        } else if (rol === 'Tecnico') {
+        } else if (rol === 'TECNICO') {
             // Verificar que el técnico autenticado sea el técnico del servicio
             const tecnico = await Tecnico.findOne({
                 where: { id_usuario: req.usuario.id_usuario },

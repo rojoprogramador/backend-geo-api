@@ -724,8 +724,8 @@ export const obtenerCalificacionServicio = async (req, res) => {
         // ----------------------------------------------------------------
         const { rol, id_usuario } = req.usuario;
 
-        if (rol !== 'Administrador') {
-            if (rol === 'Cliente') {
+        if (rol !== 'ADMIN') {
+            if (rol === 'CLIENTE') {
                 // Verificar que el cliente autenticado es el dueño del servicio
                 const cliente = await Cliente.findOne({
                     where: { id_usuario },
@@ -737,7 +737,7 @@ export const obtenerCalificacionServicio = async (req, res) => {
                         'No tienes permiso para ver la calificación de este servicio'
                     );
                 }
-            } else if (rol === 'Tecnico') {
+            } else if (rol === 'TECNICO') {
                 // Verificar que el técnico autenticado realizó este servicio
                 const tecnico = await Tecnico.findOne({
                     where: { id_usuario },

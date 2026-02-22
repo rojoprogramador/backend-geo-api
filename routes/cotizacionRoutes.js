@@ -265,7 +265,7 @@ const router = Router();
 // ---------------------------------------------------------------------------
 
 // POST /api/cotizaciones — HU-11: Técnico envía cotización
-router.post('/', verifyToken, permitirRoles('Tecnico'), crearCotizacion);
+router.post('/', verifyToken, permitirRoles('TECNICO'), crearCotizacion);
 
 // GET /api/cotizaciones/solicitud/:id_solicitud — HU-12: Cliente ve y compara cotizaciones
 router.get('/solicitud/:id_solicitud', verifyToken, permitirRoles('CLIENTE'), obtenerCotizacionesSolicitud);

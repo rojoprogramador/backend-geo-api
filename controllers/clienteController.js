@@ -291,7 +291,7 @@ export const registrarCliente = async (req, res) => {
         //    El campo se llama 'descripcion' en nuestra base de datos
         // ----------------------------------------------------------------
         const rolCliente = await Rol.findOne({
-            where: { descripcion: 'Cliente' },
+            where: { descripcion: 'CLIENTE' },
             transaction: t,
         });
 
@@ -299,7 +299,7 @@ export const registrarCliente = async (req, res) => {
             // Esto no debería ocurrir en producción si los seeders están aplicados,
             // pero es un error de configuración del servidor, no del cliente.
             await t.rollback();
-            logger.error('registrarCliente: El rol "Cliente" no existe en la tabla Rol');
+            logger.error('registrarCliente: El rol "CLIENTE" no existe en la tabla Rol');
             throw new Error('Configuración de roles incorrecta en el servidor');
         }
 
@@ -444,7 +444,7 @@ export const obtenerPerfilCliente = async (req, res) => {
         // ----------------------------------------------------------------
         // 1. Verificar que el usuario autenticado tiene rol Cliente
         // ----------------------------------------------------------------
-        if (req.usuario.rol !== 'Cliente') {
+        if (req.usuario.rol !== 'CLIENTE') {
             throw new ForbiddenError('Esta ruta es exclusiva para clientes');
         }
 
@@ -613,7 +613,7 @@ export const actualizarPerfilCliente = async (req, res) => {
         // ----------------------------------------------------------------
         // 1. Verificar rol
         // ----------------------------------------------------------------
-        if (req.usuario.rol !== 'Cliente') {
+        if (req.usuario.rol !== 'CLIENTE') {
             await t.rollback();
             throw new ForbiddenError('Esta ruta es exclusiva para clientes');
         }

@@ -154,15 +154,15 @@ router.put('/perfil', verifyToken, actualizarPerfilTecnico);
 // -----------------------------------------------------------------------
 
 // GET  /api/tecnicos/pendientes — Lista técnicos con PENDIENTE_VALIDACION (Admin)
-router.get('/pendientes', verifyToken, permitirRoles('ADMINISTRADOR'), obtenerTecnicosPendientes);
+router.get('/pendientes', verifyToken, permitirRoles('ADMIN'), obtenerTecnicosPendientes);
 
 // GET  /api/tecnicos/:id — Perfil completo de un técnico para revisión (Admin)
-router.get('/:id', verifyToken, permitirRoles('ADMINISTRADOR'), obtenerDetalleTecnico);
+router.get('/:id', verifyToken, permitirRoles('ADMIN'), obtenerDetalleTecnico);
 
 // PUT  /api/tecnicos/:id/aprobar — Aprobar técnico (Admin)
-router.put('/:id/aprobar', verifyToken, permitirRoles('ADMINISTRADOR'), aprobarTecnico);
+router.put('/:id/aprobar', verifyToken, permitirRoles('ADMIN'), aprobarTecnico);
 
 // PUT  /api/tecnicos/:id/rechazar — Rechazar técnico (Admin)
-router.put('/:id/rechazar', verifyToken, permitirRoles('ADMINISTRADOR'), rechazarTecnico);
+router.put('/:id/rechazar', verifyToken, permitirRoles('ADMIN'), rechazarTecnico);
 
 export default router;

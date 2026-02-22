@@ -969,13 +969,13 @@ export const obtenerSolicitudPorId = async (req, res) => {
         // ----------------------------------------------------------------
         const { rol, id_usuario } = req.usuario;
 
-        if (rol === 'Cliente') {
+        if (rol === 'CLIENTE') {
             // Verificar que la solicitud pertenece a este cliente
             const cliente = await Cliente.findOne({ where: { id_usuario } });
             if (!cliente || solicitud.id_cliente !== cliente.id_cliente) {
                 throw new ForbiddenError('No tienes permiso para ver esta solicitud');
             }
-        } else if (rol === 'Tecnico') {
+        } else if (rol === 'TECNICO') {
             // Verificar que el técnico tiene acceso (asignado o en cola)
             const tecnico = await Tecnico.findOne({ where: { id_usuario } });
             if (!tecnico) {

@@ -80,16 +80,16 @@ router.get('/:id', obtenerSubcategoriaPorId);
 // ---------------------------------------------------------------------------
 // POST /api/subcategorias — Solo Administradores
 // ---------------------------------------------------------------------------
-router.post('/', verifyToken, permitirRoles('ADMINISTRADOR'), crearSubcategoria);
+router.post('/', verifyToken, permitirRoles('ADMIN'), crearSubcategoria);
 
 // ---------------------------------------------------------------------------
 // PUT /api/subcategorias/:id — Solo Administradores
 // ---------------------------------------------------------------------------
-router.put('/:id', verifyToken, permitirRoles('ADMINISTRADOR'), actualizarSubcategoria);
+router.put('/:id', verifyToken, permitirRoles('ADMIN'), actualizarSubcategoria);
 
 // ---------------------------------------------------------------------------
 // DELETE /api/subcategorias/:id — Solo Administradores
 // ---------------------------------------------------------------------------
-router.delete('/:id', verifyToken, permitirRoles('ADMINISTRADOR'), eliminarSubcategoria);
+router.delete('/:id', verifyToken, permitirRoles('ADMIN'), eliminarSubcategoria);
 
 export default router;
