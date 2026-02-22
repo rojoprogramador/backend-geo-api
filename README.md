@@ -414,6 +414,85 @@ docker-compose exec app npx sequelize-cli model:generate --name Modelo --attribu
 
 ---
 
+## Conventional Commits
+
+Este proyecto sigue la convención [Conventional Commits](https://www.conventionalcommits.org/) para mantener un historial de cambios claro y facilitar la generación de changelogs y versionamiento semántico.
+
+### Formato
+
+```
+<tipo>(<alcance>): <descripción corta>
+
+[cuerpo opcional]
+
+[notas de pie opcionales]
+```
+
+### Tipos de commit
+
+| Tipo | Descripcion | Ejemplo |
+|------|-------------|---------|
+| `feat` | Nueva funcionalidad | `feat(solicitudes): agregar endpoint de solicitudes programadas` |
+| `fix` | Correccion de errores | `fix(auth): normalizar nombres de roles a ADMIN/CLIENTE/TECNICO` |
+| `docs` | Cambios en documentacion | `docs(readme): agregar seccion de conventional commits` |
+| `style` | Formato, punto y coma, etc. (sin cambio de logica) | `style(controllers): aplicar formato consistente de comillas` |
+| `refactor` | Reestructurar codigo sin cambiar funcionalidad | `refactor(middleware): simplificar validacion de roles` |
+| `perf` | Mejoras de rendimiento | `perf(queries): optimizar busqueda geoespacial con indice GiST` |
+| `test` | Agregar o corregir tests | `test(auth): agregar tests unitarios para login` |
+| `build` | Cambios en build, dependencias o herramientas | `build(docker): actualizar imagen base a Node 20` |
+| `ci` | Cambios en CI/CD (GitHub Actions, pipelines) | `ci(actions): agregar job de analisis SonarCloud` |
+| `chore` | Tareas de mantenimiento general | `chore(deps): actualizar dependencias de produccion` |
+| `revert` | Revertir un commit anterior | `revert: revert "feat(solicitudes): agregar endpoint"` |
+
+### Alcance (scope)
+
+El alcance es opcional y describe la seccion del proyecto afectada:
+
+- `auth` - Autenticacion y autorizacion (login, JWT, roles)
+- `solicitudes` - Flujo de solicitudes de servicio
+- `cotizaciones` - Sistema de cotizaciones
+- `servicios` - Gestion de servicios activos/finalizados
+- `calificaciones` - Sistema de calificaciones y resenas
+- `categorias` - CRUD de categorias y subcategorias
+- `tecnicos` - Registro, perfil y validacion de tecnicos
+- `clientes` - Registro y perfil de clientes
+- `swagger` - Documentacion OpenAPI/Swagger
+- `docker` - Configuracion Docker y docker-compose
+- `db` - Migraciones, seeders y modelos Sequelize
+- `middleware` - Middlewares de Express
+- `deps` - Dependencias del proyecto
+
+### Breaking Changes
+
+Si un commit introduce un cambio que rompe compatibilidad, se agrega `!` despues del tipo/alcance o se incluye `BREAKING CHANGE:` en el pie:
+
+```bash
+feat(auth)!: cambiar estructura del token JWT
+
+BREAKING CHANGE: el campo 'role' del token ahora se llama 'rol' y usa valores en mayusculas.
+```
+
+### Ramas
+
+| Rama | Proposito |
+|------|-----------|
+| `main` | Produccion estable |
+| `develop` | Integracion de features |
+| `feature/*` | Nuevas funcionalidades (`feature/HU-09-solicitudes`) |
+| `fix/*` | Correccion de bugs (`fix/rol-registro-500`) |
+| `hotfix/*` | Correcciones urgentes en produccion |
+| `release/*` | Preparacion de nueva version (`release/v1.2.0`) |
+
+### Versionamiento Semantico (SemVer)
+
+Los releases siguen `MAJOR.MINOR.PATCH`:
+
+- **MAJOR** (1.0.0 -> 2.0.0): Cambios que rompen compatibilidad (`BREAKING CHANGE`)
+- **MINOR** (1.0.0 -> 1.1.0): Nueva funcionalidad compatible (`feat`)
+- **PATCH** (1.0.0 -> 1.0.1): Correccion de errores compatible (`fix`)
+
+---
+
 ## 📄 Licencia
 
 ISC
