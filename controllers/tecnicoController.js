@@ -298,7 +298,7 @@ export const registrarTecnico = async (req, res) => {
                 apellido:           apellido.trim(),
                 correo_electronico,
                 telefono,
-                contrasena:         contrasenaHash,
+                contraseña:         contrasenaHash,
                 num_identificacion: String(num_identificacion),
                 id_rol:             rolTecnico.id_rol,
                 id_tipoDoc,
