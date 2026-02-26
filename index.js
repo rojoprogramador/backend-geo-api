@@ -15,6 +15,7 @@ import solicitudRoutes from './routes/solicitudRoutes.js';
 import cotizacionRoutes from './routes/cotizacionRoutes.js';
 import calificacionRoutes from './routes/calificacionRoutes.js';
 import servicioRoutes from './routes/servicioRoutes.js';
+import ciudadRoutes from './routes/ciudadRoutes.js';
 
 const app = express();
 const PORT = 3000;
@@ -53,6 +54,7 @@ app.use('/api/solicitudes', solicitudRoutes);
 app.use('/api/cotizaciones', cotizacionRoutes);
 app.use('/api/calificaciones', calificacionRoutes);
 app.use('/api/servicios', servicioRoutes);
+app.use('/api/ciudades', ciudadRoutes);
 
 // 4. RUTA DE PRUEBA
 app.get('/', (req, res) => {

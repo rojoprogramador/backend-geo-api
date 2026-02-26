@@ -298,11 +298,12 @@ export const registrarTecnico = async (req, res) => {
                 apellido:           apellido.trim(),
                 correo_electronico,
                 telefono,
-                contraseña:         contrasenaHash,
+                'contraseña':       contrasenaHash,
                 num_identificacion: String(num_identificacion),
                 id_rol:             rolTecnico.id_rol,
                 id_tipoDoc,
                 fecha_nacimiento,
+                id_ciudad:          Number(id_ciudad),
             },
             { transaction: t }
         );
@@ -1727,6 +1728,277 @@ export const rechazarTecnico = async (req, res) => {
         if (!t.finished) {
             await t.rollback();
         }
+        return handleError(res, error);
+    }
+};
+
+// ---------------------------------------------------------------------------
+
+/**
+ * @swagger
+ * /tecnicos/admin/todos:
+ *   get:
+ *     summary: Obtener lista de TODOS los técnicos con paginación y filtro opcional
+ *     description: |
+ *       Retorna todos los técnicos registrados en la plataforma con paginación,
+ *       incluyendo información del usuario asociado y ciudad base.
+ *
+ *       **Solo Administradores.**
+ *
+ *       **Filtros opcionales:**
+ *       - `estado`: Filtra por estado_validacion específico (PENDIENTE_VALIDACION, ACTIVO, SUSPENDIDO, RECHAZADO, INACTIVO)
+ *
+ *       **Paginación:**
+ *       - `page`: Número de página (por defecto 1)
+ *       - `limit`: Cantidad de resultados por página (1-100, por defecto 20)
+ *
+ *       **Orden:**
+ *       - Los técnicos se retornan ordenados por fecha de creación descendente (más recientes primero)
+ *
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         required: false
+ *         description: Número de página
+ *         example: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 20
+ *         required: false
+ *         description: Cantidad de resultados por página
+ *         example: 20
+ *       - in: query
+ *         name: estado
+ *         schema:
+ *           type: string
+ *           enum: [PENDIENTE_VALIDACION, ACTIVO, SUSPENDIDO, RECHAZADO, INACTIVO]
+ *         required: false
+ *         description: Filtrar por estado de validación específico
+ *         example: ACTIVO
+ *     responses:
+ *       200:
+ *         description: Lista de técnicos obtenida exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Técnicos obtenidos exitosamente"
+ *                 total:
+ *                   type: integer
+ *                   example: 45
+ *                   description: Total de técnicos que cumplen el filtro
+ *                 page:
+ *                   type: integer
+ *                   example: 1
+ *                 limit:
+ *                   type: integer
+ *                   example: 20
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id_tecnico:
+ *                         type: integer
+ *                         example: 7
+ *                       id_usuario:
+ *                         type: integer
+ *                         example: 15
+ *                       nombre:
+ *                         type: string
+ *                         example: "Andrés Felipe"
+ *                       apellido:
+ *                         type: string
+ *                         example: "Martínez Herrera"
+ *                       correo_electronico:
+ *                         type: string
+ *                         format: email
+ *                         example: "andres.martinez@example.com"
+ *                       telefono:
+ *                         type: string
+ *                         example: "3156789012"
+ *                       num_identificacion:
+ *                         type: string
+ *                         example: "1061234567"
+ *                       ciudad_base:
+ *                         type: string
+ *                         example: "Cali"
+ *                       estado_validacion:
+ *                         type: string
+ *                         enum: [PENDIENTE_VALIDACION, ACTIVO, SUSPENDIDO, RECHAZADO, INACTIVO]
+ *                         example: "ACTIVO"
+ *                       fecha_registro:
+ *                         type: string
+ *                         format: date-time
+ *                         example: "2026-02-10T14:30:00.000Z"
+ *             examples:
+ *               todos_los_tecnicos:
+ *                 summary: Todos los técnicos (sin filtro)
+ *                 value:
+ *                   success: true
+ *                   message: "Técnicos obtenidos exitosamente"
+ *                   total: 45
+ *                   page: 1
+ *                   limit: 20
+ *                   data:
+ *                     - id_tecnico: 12
+ *                       id_usuario: 28
+ *                       nombre: "Carlos Eduardo"
+ *                       apellido: "Ramírez Torres"
+ *                       correo_electronico: "carlos.ramirez@example.com"
+ *                       telefono: "3209876543"
+ *                       num_identificacion: "1098765432"
+ *                       ciudad_base: "Medellín"
+ *                       estado_validacion: "ACTIVO"
+ *                       fecha_registro: "2026-02-22T10:15:00.000Z"
+ *                     - id_tecnico: 11
+ *                       id_usuario: 27
+ *                       nombre: "María Fernanda"
+ *                       apellido: "López García"
+ *                       correo_electronico: "maria.lopez@example.com"
+ *                       telefono: "3101234567"
+ *                       num_identificacion: "987654321"
+ *                       ciudad_base: "Cali"
+ *                       estado_validacion: "PENDIENTE_VALIDACION"
+ *                       fecha_registro: "2026-02-20T08:30:00.000Z"
+ *               filtrado_por_estado:
+ *                 summary: Solo técnicos activos
+ *                 value:
+ *                   success: true
+ *                   message: "Técnicos obtenidos exitosamente"
+ *                   total: 32
+ *                   page: 1
+ *                   limit: 20
+ *                   data:
+ *                     - id_tecnico: 12
+ *                       id_usuario: 28
+ *                       nombre: "Carlos Eduardo"
+ *                       apellido: "Ramírez Torres"
+ *                       correo_electronico: "carlos.ramirez@example.com"
+ *                       telefono: "3209876543"
+ *                       num_identificacion: "1098765432"
+ *                       ciudad_base: "Medellín"
+ *                       estado_validacion: "ACTIVO"
+ *                       fecha_registro: "2026-02-22T10:15:00.000Z"
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       403:
+ *         $ref: '#/components/responses/ForbiddenError'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+export const obtenerTodosTecnicos = async (req, res) => {
+    try {
+        // ----------------------------------------------------------------
+        // 1. Parsear y validar parámetros de paginación
+        // ----------------------------------------------------------------
+        const pageRaw  = req.query.page  ?? '1';
+        const limitRaw = req.query.limit ?? '20';
+        const estadoFiltro = req.query.estado;
+
+        const page  = parseInt(pageRaw,  10);
+        const limit = parseInt(limitRaw, 10);
+
+        const erroresPaginacion = [];
+
+        if (!Number.isInteger(page)  || page  < 1)                    erroresPaginacion.push('El parámetro page debe ser un entero mayor o igual a 1');
+        if (!Number.isInteger(limit) || limit < 1 || limit > 100)     erroresPaginacion.push('El parámetro limit debe ser un entero entre 1 y 100');
+
+        if (erroresPaginacion.length > 0) {
+            throw new ValidationError('Parámetros de paginación inválidos', erroresPaginacion);
+        }
+
+        const offset = (page - 1) * limit;
+
+        // ----------------------------------------------------------------
+        // 2. Validar estado si se proporciona
+        // ----------------------------------------------------------------
+        const where = {};
+        const estadosValidos = ['PENDIENTE_VALIDACION', 'ACTIVO', 'SUSPENDIDO', 'RECHAZADO', 'INACTIVO'];
+
+        if (estadoFiltro) {
+            if (!estadosValidos.includes(estadoFiltro)) {
+                throw new ValidationError(
+                    `El parámetro estado debe ser uno de: ${estadosValidos.join(', ')}`
+                );
+            }
+            where.estado_validacion = estadoFiltro;
+        }
+
+        // ----------------------------------------------------------------
+        // 3. Consultar técnicos con filtros opcionales
+        //    - Ciudad usa el modelo directamente (sin alias en models/index.js)
+        //    - datos_usuario es el alias definido en Tecnico.belongsTo(Usuario)
+        // ----------------------------------------------------------------
+        const { count, rows } = await Tecnico.findAndCountAll({
+            where,
+            include: [
+                {
+                    model:      Usuario,
+                    as:         'datos_usuario',
+                    attributes: [
+                        'id_usuario',
+                        'nombre',
+                        'apellido',
+                        'correo_electronico',
+                        'telefono',
+                        'num_identificacion',
+                    ],
+                },
+                {
+                    model:      Ciudad,
+                    attributes: ['nombre_ciudad'],
+                },
+            ],
+            order:  [['createdAt', 'DESC']],   // Más recientes primero
+            limit,
+            offset,
+        });
+
+        logger.info(
+            `obtenerTodosTecnicos: ${count} técnicos totales${estadoFiltro ? ` con estado=${estadoFiltro}` : ''} — página ${page}/${Math.ceil(count / limit) || 1} — solicitado por admin id=${req.usuario.id_usuario}`
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: 'Técnicos obtenidos exitosamente',
+            total:   count,
+            page,
+            limit,
+            data: rows.map((tec) => ({
+                id_tecnico:         tec.id_tecnico,
+                id_usuario:         tec.datos_usuario?.id_usuario         ?? null,
+                nombre:             tec.datos_usuario?.nombre             ?? null,
+                apellido:           tec.datos_usuario?.apellido           ?? null,
+                correo_electronico: tec.datos_usuario?.correo_electronico ?? null,
+                telefono:           tec.datos_usuario?.telefono           ?? null,
+                num_identificacion: tec.datos_usuario?.num_identificacion ?? null,
+                ciudad_base:        tec.Ciudad?.nombre_ciudad             ?? null,
+                estado_validacion:  tec.estado_validacion,
+                fecha_registro:     tec.createdAt,
+            })),
+        });
+
+    } catch (error) {
         return handleError(res, error);
     }
 };

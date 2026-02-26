@@ -74,6 +74,11 @@ const router = express.Router();
  *           type: boolean
  *           example: true
  *           description: "Debe ser true para completar el registro. El usuario acepta los términos y condiciones."
+ *         id_ciudad:
+ *           type: integer
+ *           minimum: 1
+ *           example: 1
+ *           description: "ID de la ciudad de residencia del cliente (opcional)"
  *
  *     RegistroClienteResponse:
  *       type: object

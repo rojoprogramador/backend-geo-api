@@ -38,10 +38,14 @@ Usuario.belongsTo(Rol, { foreignKey: 'id_rol' });
 TipoDoc.hasMany(Usuario, { foreignKey: 'id_tipoDoc' });
 Usuario.belongsTo(TipoDoc, { foreignKey: 'id_tipoDoc' });
 
-// UBICACIÓN 
+// UBICACIÓN
 // Pais -> Ciudad
 Pais.hasMany(Ciudad, { foreignKey: 'id_pais' });
-Ciudad.belongsTo(Pais, { foreignKey: 'id_pais' });
+Ciudad.belongsTo(Pais, { foreignKey: 'id_pais', as: 'Pais' });
+
+// Ciudad -> Usuario
+Ciudad.hasMany(Usuario, { foreignKey: 'id_ciudad' });
+Usuario.belongsTo(Ciudad, { foreignKey: 'id_ciudad' });
 
 // Ciudad -> Tecnico (Ubicación base)
 Ciudad.hasMany(Tecnico, { foreignKey: 'ciudad_base' });

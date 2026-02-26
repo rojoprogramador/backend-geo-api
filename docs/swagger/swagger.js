@@ -222,6 +222,12 @@ Node.js 20 | Express 5 | PostgreSQL 17 + PostGIS 3.5 | Sequelize ORM
                 rol: {
                   type: 'string',
                   example: 'ADMIN'
+                },
+                estado_validacion: {
+                  type: 'string',
+                  enum: ['PENDIENTE_VALIDACION', 'ACTIVO', 'SUSPENDIDO', 'RECHAZADO', 'INACTIVO'],
+                  example: 'ACTIVO',
+                  description: 'Estado de validación del técnico. Solo presente si el rol es TECNICO.'
                 }
               }
             }
@@ -254,7 +260,7 @@ Node.js 20 | Express 5 | PostgreSQL 17 + PostGIS 3.5 | Sequelize ORM
             },
             estado_validacion: {
               type: 'string',
-              enum: ['PENDIENTE_VALIDACION', 'ACTIVO', 'SUSPENDIDO', 'RECHAZADO'],
+              enum: ['PENDIENTE_VALIDACION', 'ACTIVO', 'SUSPENDIDO', 'RECHAZADO', 'INACTIVO'],
               readOnly: true,
               example: 'ACTIVO'
             },
@@ -634,6 +640,10 @@ Node.js 20 | Express 5 | PostgreSQL 17 + PostGIS 3.5 | Sequelize ORM
       {
         name: 'Geolocalización',
         description: '(Pendiente de implementación) Búsqueda de técnicos cercanos usando PostGIS'
+      },
+      {
+        name: 'Ciudades',
+        description: 'Consulta de ciudades disponibles en la plataforma'
       }
     ]
   },

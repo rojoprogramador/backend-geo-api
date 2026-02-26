@@ -1,5 +1,4 @@
-import Usuario from "../models/Usuario.js";
-import Rol from "../models/Rol.js";
+import { Usuario, Rol, Tecnico } from '../models/index.js';
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import dotenv from 'dotenv';
@@ -91,9 +90,18 @@ export const login = async ( req, res ) => {
         const {correo_electronico, contraseña} = req.body;
 
         // 2. Verificar si el usuario existe en la base de datos por su correo electrónico
+        //    Si es técnico, incluir su perfil para obtener estado_validacion
         const usuario = await Usuario.findOne({
             where: { correo_electronico },
-            include:[ { model: Rol, attributes: ['descripcion'] } ],
+            include: [
+                { model: Rol, attributes: ['descripcion'] },
+                {
+                    model: Tecnico,
+                    as: 'perfil_tecnico',
+                    attributes: ['estado_validacion'],
+                    required: false,
+                },
+            ],
         });
 
         if (!usuario) {
@@ -118,13 +126,21 @@ export const login = async ( req, res ) => {
         );
 
         // 5. Responder al cliente con el token
+        //    Si es técnico, incluir estado_validacion
+        const responseUsuario = {
+            nombre: usuario.nombre,
+            rol: usuario.Rol.descripcion,
+        };
+
+        // Agregar estado_validacion solo si es técnico y tiene perfil_tecnico
+        if (usuario.Rol.descripcion === 'TECNICO' && usuario.perfil_tecnico) {
+            responseUsuario.estado_validacion = usuario.perfil_tecnico.estado_validacion;
+        }
+
         res.json({
             message: 'Autenticación exitosa',
             token: token,
-            usuario: {
-                nombre: usuario.nombre,
-                rol: usuario.Rol.descripcion
-            }
+            usuario: responseUsuario,
         });
     } catch (error) {
         console.error('Error durante el login:', error);

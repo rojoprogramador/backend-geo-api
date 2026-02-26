@@ -1,5 +1,5 @@
 import bcrypt from 'bcrypt';
-import { sequelize, Usuario, Cliente, Rol, TipoDoc } from '../models/index.js';
+import { sequelize, Usuario, Cliente, Rol, TipoDoc, Ciudad } from '../models/index.js';
 import { handleError } from '../utils/errorHandler.js';
 import { ValidationError, ConflictError, NotFoundError, ForbiddenError } from '../utils/errors/AppError.js';
 import logger from '../utils/logger.js';
@@ -184,6 +184,7 @@ export const registrarCliente = async (req, res) => {
             id_tipoDoc,
             fecha_nacimiento,
             acepta_terminos,
+            id_ciudad,
         } = req.body;
 
         // ----------------------------------------------------------------
@@ -254,7 +255,30 @@ export const registrarCliente = async (req, res) => {
         }
 
         // ----------------------------------------------------------------
-        // 4. Verificar que el tipo de documento exista
+        // 4. Validar id_ciudad si se proporciona (campo opcional)
+        // ----------------------------------------------------------------
+        if (id_ciudad !== undefined) {
+            const idCiudadNum = parseInt(id_ciudad, 10);
+
+            if (!Number.isInteger(idCiudadNum) || idCiudadNum < 1) {
+                await t.rollback();
+                throw new ValidationError('Error de validación', [
+                    'El campo id_ciudad debe ser un entero positivo'
+                ]);
+            }
+
+            // Verificar que la ciudad exista
+            const ciudadExistente = await Ciudad.findByPk(idCiudadNum, { transaction: t });
+            if (!ciudadExistente) {
+                await t.rollback();
+                throw new ValidationError('Error de validación', [
+                    `La ciudad con id ${idCiudadNum} no existe`
+                ]);
+            }
+        }
+
+        // ----------------------------------------------------------------
+        // 5. Verificar que el tipo de documento exista
         // ----------------------------------------------------------------
         const tipoDocExistente = await TipoDoc.findByPk(id_tipoDoc, { transaction: t });
         if (!tipoDocExistente) {
@@ -311,20 +335,24 @@ export const registrarCliente = async (req, res) => {
         // ----------------------------------------------------------------
         // 8. Crear el Usuario dentro de la transacción
         // ----------------------------------------------------------------
-        const nuevoUsuario = await Usuario.create(
-            {
-                nombre:           nombre.trim(),
-                apellido:         apellido.trim(),
-                correo_electronico,
-                telefono,
-                contraseña:       contraseñaHash,
-                num_identificacion: String(num_identificacion),
-                id_rol:           rolCliente.id_rol,
-                id_tipoDoc,
-                fecha_nacimiento,
-            },
-            { transaction: t }
-        );
+        const usuarioData = {
+            nombre:           nombre.trim(),
+            apellido:         apellido.trim(),
+            correo_electronico,
+            telefono,
+            contraseña:       contraseñaHash,
+            num_identificacion: String(num_identificacion),
+            id_rol:           rolCliente.id_rol,
+            id_tipoDoc,
+            fecha_nacimiento,
+        };
+
+        // Agregar id_ciudad solo si se proporcionó
+        if (id_ciudad !== undefined) {
+            usuarioData.id_ciudad = parseInt(id_ciudad, 10);
+        }
+
+        const nuevoUsuario = await Usuario.create(usuarioData, { transaction: t });
 
         logger.info(`registrarCliente: Usuario creado con id ${nuevoUsuario.id_usuario} — correo: ${correo_electronico}`);
 

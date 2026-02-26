@@ -4,6 +4,7 @@ import {
     obtenerPerfilTecnico,
     actualizarPerfilTecnico,
     obtenerTecnicosPendientes,
+    obtenerTodosTecnicos,
     obtenerDetalleTecnico,
     aprobarTecnico,
     rechazarTecnico,
@@ -148,13 +149,16 @@ router.put('/perfil', verifyToken, actualizarPerfilTecnico);
 
 // -----------------------------------------------------------------------
 // RUTAS DE ADMINISTRACIÓN — HU-24 y HU-25
-// IMPORTANTE: las rutas estáticas (/pendientes) DEBEN declararse ANTES
+// IMPORTANTE: las rutas estáticas (/pendientes, /admin/todos) DEBEN declararse ANTES
 // que las rutas con parámetro dinámico (/:id) para que Express no
-// interprete la cadena "pendientes" como un valor de :id.
+// interprete la cadena "pendientes" o "admin" como un valor de :id.
 // -----------------------------------------------------------------------
 
 // GET  /api/tecnicos/pendientes — Lista técnicos con PENDIENTE_VALIDACION (Admin)
 router.get('/pendientes', verifyToken, permitirRoles('ADMIN'), obtenerTecnicosPendientes);
+
+// GET  /api/tecnicos/admin/todos — Lista TODOS los técnicos con paginación y filtro (Admin)
+router.get('/admin/todos', verifyToken, permitirRoles('ADMIN'), obtenerTodosTecnicos);
 
 // GET  /api/tecnicos/:id — Perfil completo de un técnico para revisión (Admin)
 router.get('/:id', verifyToken, permitirRoles('ADMIN'), obtenerDetalleTecnico);

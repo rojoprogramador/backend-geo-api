@@ -43,7 +43,7 @@ const Tecnico = sequelize.define('Tecnico', {
         defaultValue: 0.0
     },
     estado_validacion: {
-        type: DataTypes.ENUM('PENDIENTE_VALIDACION', 'ACTIVO', 'SUSPENDIDO', 'RECHAZADO'),
+        type: DataTypes.ENUM('PENDIENTE_VALIDACION', 'ACTIVO', 'SUSPENDIDO', 'RECHAZADO', 'INACTIVO'),
         allowNull: false,
         defaultValue: 'PENDIENTE_VALIDACION'
     },
