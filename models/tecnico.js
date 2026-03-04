@@ -36,7 +36,7 @@ const Tecnico = sequelize.define('Tecnico', {
     },
     disponible_inmediato: {
         type: DataTypes.BOOLEAN,
-        defaultValue: true
+        defaultValue: false
     },
     prom_calificacion: {
         type: DataTypes.FLOAT,

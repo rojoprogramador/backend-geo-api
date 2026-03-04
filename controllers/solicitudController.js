@@ -217,8 +217,9 @@ export const crearSolicitudInmediata = async (req, res) => {
 
         // ----------------------------------------------------------------
         // 6. Buscar técnicos cercanos con ST_DWithin (servicio inmediato)
-        //    - disponible_inmediato = true
+        //    - disponible_inmediato = true (toggle de jornada activo)
         //    - estado_validacion = 'ACTIVO'
+        //    - Sin servicio en curso (EN_PROCESO)
         //    - Tiene la subcategoría como especialidad
         //    - Dentro de su propio radio_cobertura_km
         // ----------------------------------------------------------------
@@ -236,6 +237,11 @@ export const crearSolicitudInmediata = async (req, res) => {
                AND t.disponible_inmediato = true
                AND t.ubicacion_base IS NOT NULL
                AND e.id_subcategoria = :id_subcategoria
+               AND NOT EXISTS (
+                   SELECT 1 FROM "Servicio" sv
+                   WHERE sv.id_tecnico = t.id_tecnico
+                     AND sv.id_estado = 5
+               )
                AND ST_DWithin(
                        t.ubicacion_base::geography,
                        ST_SetSRID(ST_MakePoint(:longitud, :latitud), 4326)::geography,

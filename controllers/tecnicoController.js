@@ -539,13 +539,14 @@ export const obtenerPerfilTecnico = async (req, res) => {
  *       - `telefono`: número celular colombiano (10 dígitos comenzando con 3)
  *       - `correo_electronico`: debe ser un email válido y no estar en uso por otro usuario
  *       - `id_ciudad`: ID de la ciudad base (debe existir en la tabla Ciudad)
+ *       - `disponible_inmediato`: toggle de jornada (true = disponible para servicios inmediatos)
  *
  *       **Campos de solo lectura (no se pueden cambiar):**
  *       - `nombre`, `apellido`, `num_identificacion`, `fecha_nacimiento`, `id_tipoDoc`
- *       - `estado_validacion` (gestionado por el administrador)
+ *       - `estado_validacion` (gestionado exclusivamente por el administrador)
  *
  *       **Reglas de negocio:**
- *       - Al menos uno de los tres campos debe estar presente en el body.
+ *       - Al menos uno de los campos editables debe estar presente en el body.
  *       - Si se envía `correo_electronico`, se verifica que no esté registrado en otro usuario.
  *       - Si se envía `id_ciudad`, se verifica que la ciudad exista en la base de datos.
  *       - La operación se realiza dentro de una transacción Sequelize.
@@ -574,7 +575,19 @@ export const obtenerPerfilTecnico = async (req, res) => {
  *                 minimum: 1
  *                 example: 2
  *                 description: "ID de la nueva ciudad base del técnico"
+ *               disponible_inmediato:
+ *                 type: boolean
+ *                 example: true
+ *                 description: "Toggle de jornada: true = disponible para servicios inmediatos, false = fuera de jornada"
  *           examples:
+ *             toggle_disponibilidad:
+ *               summary: Iniciar jornada (disponible para servicios inmediatos)
+ *               value:
+ *                 disponible_inmediato: true
+ *             fin_jornada:
+ *               summary: Terminar jornada
+ *               value:
+ *                 disponible_inmediato: false
  *             solo_telefono:
  *               summary: Actualizar solo teléfono
  *               value:
@@ -583,12 +596,6 @@ export const obtenerPerfilTecnico = async (req, res) => {
  *               summary: Cambiar ciudad base a Medellín
  *               value:
  *                 id_ciudad: 2
- *             actualizacion_completa:
- *               summary: Actualizar teléfono, correo y ciudad
- *               value:
- *                 telefono: "3159998877"
- *                 correo_electronico: "andres.nuevo@example.com"
- *                 id_ciudad: 3
  *     responses:
  *       200:
  *         description: Perfil del técnico actualizado exitosamente
@@ -619,6 +626,9 @@ export const obtenerPerfilTecnico = async (req, res) => {
  *                       type: string
  *                       example: "Medellín"
  *                       nullable: true
+ *                     disponible_inmediato:
+ *                       type: boolean
+ *                       example: true
  *       400:
  *         $ref: '#/components/responses/ValidationError'
  *       401:
@@ -654,15 +664,15 @@ export const actualizarPerfilTecnico = async (req, res) => {
         // ----------------------------------------------------------------
         // 2. Extraer únicamente los campos editables del body
         // ----------------------------------------------------------------
-        const { telefono, correo_electronico, id_ciudad } = req.body;
+        const { telefono, correo_electronico, id_ciudad, disponible_inmediato } = req.body;
 
         // ----------------------------------------------------------------
         // 3. Verificar que al menos un campo editable fue enviado
         // ----------------------------------------------------------------
-        if (!telefono && !correo_electronico && id_ciudad === undefined) {
+        if (!telefono && !correo_electronico && id_ciudad === undefined && disponible_inmediato === undefined) {
             await t.rollback();
             throw new ValidationError('Error de validación', [
-                'Debe enviar al menos un campo para actualizar: telefono, correo_electronico o id_ciudad',
+                'Debe enviar al menos un campo para actualizar: telefono, correo_electronico, id_ciudad o disponible_inmediato',
             ]);
         }
 
@@ -686,6 +696,10 @@ export const actualizarPerfilTecnico = async (req, res) => {
             if (!Number.isInteger(idCiudadNum) || idCiudadNum <= 0) {
                 erroresFormato.push('El campo id_ciudad debe ser un entero positivo');
             }
+        }
+
+        if (disponible_inmediato !== undefined && typeof disponible_inmediato !== 'boolean') {
+            erroresFormato.push('El campo disponible_inmediato debe ser true o false');
         }
 
         if (erroresFormato.length > 0) {
@@ -750,14 +764,15 @@ export const actualizarPerfilTecnico = async (req, res) => {
         // ----------------------------------------------------------------
         // 9. Actualizar tabla Tecnico si hay campos de técnico que cambiar
         // ----------------------------------------------------------------
-        if (id_ciudad !== undefined) {
-            await Tecnico.update(
-                { ciudad_base: Number(id_ciudad) },
-                {
-                    where: { id_tecnico: tecnico.id_tecnico },
-                    transaction: t,
-                }
-            );
+        const camposTecnico = {};
+        if (id_ciudad !== undefined)            camposTecnico.ciudad_base = Number(id_ciudad);
+        if (disponible_inmediato !== undefined)  camposTecnico.disponible_inmediato = disponible_inmediato;
+
+        if (Object.keys(camposTecnico).length > 0) {
+            await Tecnico.update(camposTecnico, {
+                where: { id_tecnico: tecnico.id_tecnico },
+                transaction: t,
+            });
         }
 
         await t.commit();
@@ -767,22 +782,15 @@ export const actualizarPerfilTecnico = async (req, res) => {
             attributes: ['id_usuario', 'correo_electronico', 'telefono'],
         });
 
-        // Recuperar ciudad actualizada si cambió
-        let nombreCiudad = null;
-        if (ciudadNueva) {
-            nombreCiudad = ciudadNueva.nombre_ciudad;
-        } else {
-            // Recuperar la ciudad actual si no cambió
-            const tecnicoActualizado = await Tecnico.findOne({
-                where: { id_usuario: req.usuario.id_usuario },
-                include: [{ model: Ciudad, attributes: ['nombre_ciudad'] }],
-            });
-            nombreCiudad = tecnicoActualizado?.Ciudad?.nombre_ciudad ?? null;
-        }
+        // Recuperar tecnico actualizado para ciudad y disponible_inmediato
+        const tecnicoActualizado = await Tecnico.findOne({
+            where: { id_usuario: req.usuario.id_usuario },
+            include: [{ model: Ciudad, attributes: ['nombre_ciudad'] }],
+        });
 
         const cambiados = [
             ...Object.keys(camposUsuario),
-            ...(id_ciudad !== undefined ? ['ciudad_base'] : []),
+            ...Object.keys(camposTecnico),
         ];
 
         logger.info(
@@ -793,10 +801,11 @@ export const actualizarPerfilTecnico = async (req, res) => {
             success: true,
             message: 'Perfil actualizado exitosamente',
             data: {
-                id_usuario:         usuarioActualizado.id_usuario,
-                correo_electronico: usuarioActualizado.correo_electronico,
-                telefono:           usuarioActualizado.telefono,
-                ciudad_base:        nombreCiudad,
+                id_usuario:           usuarioActualizado.id_usuario,
+                correo_electronico:   usuarioActualizado.correo_electronico,
+                telefono:             usuarioActualizado.telefono,
+                ciudad_base:          tecnicoActualizado?.Ciudad?.nombre_ciudad ?? null,
+                disponible_inmediato: tecnicoActualizado?.disponible_inmediato ?? null,
             },
         });
 
