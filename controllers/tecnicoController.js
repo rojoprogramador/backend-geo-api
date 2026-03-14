@@ -487,7 +487,7 @@ export const obtenerPerfilTecnico = async (req, res) => {
                 },
                 {
                     model: Ciudad,
-                    attributes: ['nombre_ciudad'],
+                    attributes: ['id_ciudad', 'nombre_ciudad'],
                 },
             ],
         });
@@ -513,6 +513,7 @@ export const obtenerPerfilTecnico = async (req, res) => {
                 num_identificacion:  usuario.num_identificacion,
                 fecha_nacimiento:    usuario.fecha_nacimiento,
                 tipo_documento:      usuario.TipoDoc?.descripcion ?? null,
+                id_ciudad:           tecnico.Ciudad?.id_ciudad ?? null,
                 ciudad_base:         tecnico.Ciudad?.nombre_ciudad ?? null,
                 estado_validacion:   tecnico.estado_validacion,
                 prom_calificacion:   tecnico.prom_calificacion,
@@ -2005,6 +2006,112 @@ export const obtenerTodosTecnicos = async (req, res) => {
                 estado_validacion:  tec.estado_validacion,
                 fecha_registro:     tec.createdAt,
             })),
+        });
+
+    } catch (error) {
+        return handleError(res, error);
+    }
+};
+
+// ---------------------------------------------------------------------------
+
+/**
+ * @swagger
+ * /tecnicos/foto:
+ *   post:
+ *     summary: Subir foto de perfil del técnico
+ *     description: |
+ *       Permite al técnico subir una foto de perfil. La foto debe ser JPG, JPEG o PNG
+ *       y no puede superar los 5MB. El archivo se guarda en `uploads/fotos/` con un
+ *       nombre único que incluye el id_usuario y timestamp.
+ *
+ *       **Solo técnicos autenticados.**
+ *
+ *       **Formatos aceptados:** image/jpeg, image/jpg, image/png
+ *       **Tamaño máximo:** 5MB
+ *
+ *       La URL de la foto se almacena en el campo `url_foto` del técnico.
+ *     tags: [Tecnicos]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - foto
+ *             properties:
+ *               foto:
+ *                 type: string
+ *                 format: binary
+ *                 description: Archivo de imagen (JPG, JPEG o PNG)
+ *     responses:
+ *       200:
+ *         description: Foto subida exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Foto de perfil actualizada exitosamente"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     url_foto:
+ *                       type: string
+ *                       example: "/uploads/fotos/tecnico-15-1709817600000.jpg"
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         description: Solo técnicos pueden subir foto de perfil
+ */
+export const uploadFotoPerfil = async (req, res) => {
+    try {
+        // Verificar que el usuario autenticado tiene rol Tecnico
+        if (req.usuario.rol !== 'TECNICO') {
+            throw new ForbiddenError('Esta ruta es exclusiva para técnicos');
+        }
+
+        // Verificar que se subió un archivo
+        if (!req.file) {
+            throw new ValidationError('Debes proporcionar una imagen en el campo "foto"');
+        }
+
+        // Buscar el tecnico autenticado
+        const tecnico = await Tecnico.findOne({
+            where: { id_usuario: req.usuario.id_usuario }
+        });
+
+        if (!tecnico) {
+            throw new NotFoundError('No se encontró el perfil de técnico');
+        }
+
+        // Construir la URL relativa del archivo
+        const urlFoto = `/uploads/fotos/${req.file.filename}`;
+
+        // Actualizar el campo url_foto en la tabla Tecnico
+        await Tecnico.update(
+            { url_foto: urlFoto },
+            { where: { id_tecnico: tecnico.id_tecnico } }
+        );
+
+        logger.info(`uploadFotoPerfil: Técnico ${tecnico.id_tecnico} subió foto de perfil: ${urlFoto}`);
+
+        return res.status(200).json({
+            success: true,
+            message: 'Foto de perfil actualizada exitosamente',
+            data: {
+                url_foto: urlFoto
+            }
         });
 
     } catch (error) {

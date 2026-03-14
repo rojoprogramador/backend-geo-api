@@ -24,6 +24,9 @@ const PORT = 3000;
 app.use(cors());
 app.use(express.json());
 
+// Servir archivos estáticos de uploads (fotos de perfil)
+app.use('/uploads', express.static('uploads'));
+
 // 📚 DOCUMENTACIÓN SWAGGER
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
     customCss: '.swagger-ui .topbar { display: none }',

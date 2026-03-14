@@ -43,3 +43,6 @@ coverage/
 # Temporales
 *.tmp
 *.temp
+
+# Uploads de usuarios
+uploads/

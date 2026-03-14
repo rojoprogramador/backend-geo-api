@@ -8,8 +8,15 @@ import {
     obtenerDetalleTecnico,
     aprobarTecnico,
     rechazarTecnico,
+    uploadFotoPerfil,
 } from '../controllers/tecnicoController.js';
+import {
+    agregarEspecialidad,
+    obtenerMisEspecialidades,
+    eliminarEspecialidad,
+} from '../controllers/especialidadController.js';
 import { verifyToken, permitirRoles } from '../middleware/authMiddleware.js';
+import { uploadFoto } from '../config/multerConfig.js';
 
 const router = express.Router();
 
@@ -168,5 +175,25 @@ router.put('/:id/aprobar', verifyToken, permitirRoles('ADMIN'), aprobarTecnico);
 
 // PUT  /api/tecnicos/:id/rechazar — Rechazar técnico (Admin)
 router.put('/:id/rechazar', verifyToken, permitirRoles('ADMIN'), rechazarTecnico);
+
+// -----------------------------------------------------------------------
+// RUTAS DE ESPECIALIDADES — Gestión de servicios del técnico
+// -----------------------------------------------------------------------
+
+// POST /api/tecnicos/especialidades — Agregar especialidad al perfil
+router.post('/especialidades', verifyToken, agregarEspecialidad);
+
+// GET  /api/tecnicos/especialidades — Listar especialidades del técnico
+router.get('/especialidades', verifyToken, obtenerMisEspecialidades);
+
+// DELETE /api/tecnicos/especialidades/:id — Eliminar especialidad
+router.delete('/especialidades/:id', verifyToken, eliminarEspecialidad);
+
+// -----------------------------------------------------------------------
+// RUTA DE FOTO DE PERFIL — Upload de imagen
+// -----------------------------------------------------------------------
+
+// POST /api/tecnicos/foto — Subir foto de perfil (multipart/form-data)
+router.post('/foto', verifyToken, uploadFoto.single('foto'), uploadFotoPerfil);
 
 export default router;
