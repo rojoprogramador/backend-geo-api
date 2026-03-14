@@ -15,6 +15,11 @@ import {
     obtenerMisEspecialidades,
     eliminarEspecialidad,
 } from '../controllers/especialidadController.js';
+import {
+    agregarCiudadOperacion,
+    obtenerMisCiudades,
+    eliminarCiudadOperacion,
+} from '../controllers/ciudadTecnicoController.js';
 import { verifyToken, permitirRoles } from '../middleware/authMiddleware.js';
 import { uploadFoto } from '../config/multerConfig.js';
 
@@ -195,5 +200,18 @@ router.delete('/especialidades/:id', verifyToken, eliminarEspecialidad);
 
 // POST /api/tecnicos/foto — Subir foto de perfil (multipart/form-data)
 router.post('/foto', verifyToken, uploadFoto.single('foto'), uploadFotoPerfil);
+
+// -----------------------------------------------------------------------
+// RUTAS DE CIUDADES DE OPERACIÓN — Zonas donde presta servicios
+// -----------------------------------------------------------------------
+
+// POST /api/tecnicos/ciudades — Agregar ciudad de operación
+router.post('/ciudades', verifyToken, agregarCiudadOperacion);
+
+// GET  /api/tecnicos/ciudades — Listar ciudades de operación
+router.get('/ciudades', verifyToken, obtenerMisCiudades);
+
+// DELETE /api/tecnicos/ciudades/:id — Eliminar ciudad de operación
+router.delete('/ciudades/:id', verifyToken, eliminarCiudadOperacion);
 
 export default router;

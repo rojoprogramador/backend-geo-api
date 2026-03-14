@@ -26,6 +26,7 @@ import Notificacion from "./notificacion.js";
 import TecnicoSolicitudQueue from "./tecnicosolicitudqueue.js";
 import TrackingUbicacion from "./trackingubicacion.js";
 import CuentaTecnico from "./cuentatecnico.js";
+import CiudadTecnico from "./ciudadtecnico.js";
 
 // --- 2. DEFINIR RELACIONES ---
 
@@ -72,6 +73,10 @@ CertificadoTecnico.belongsTo(Tecnico, { foreignKey: 'id_tecnico', as: 'tecnico' 
 // Especialidades (Muchos a Muchos: TECNICO <-> Subcategoria)
 Tecnico.belongsToMany(Subcategoria, { through: Especialidad, foreignKey: 'id_tecnico', otherKey: 'id_subcategoria', as: 'especialidades' });
 Subcategoria.belongsToMany(Tecnico, { through: Especialidad, foreignKey: 'id_subcategoria', otherKey: 'id_tecnico', as: 'tecnicos' });
+
+// Ciudades de operación (Muchos a Muchos: TECNICO <-> Ciudad)
+Tecnico.belongsToMany(Ciudad, { through: CiudadTecnico, foreignKey: 'id_tecnico', otherKey: 'id_ciudad', as: 'ciudades_operacion' });
+Ciudad.belongsToMany(Tecnico, { through: CiudadTecnico, foreignKey: 'id_ciudad', otherKey: 'id_tecnico', as: 'tecnicos_operan' });
 
 // === CATEGORÍAS ===
 Categoria.hasMany(Subcategoria, { foreignKey: 'id_categoria' });
@@ -240,5 +245,6 @@ export {
     Notificacion,
     TecnicoSolicitudQueue,
     TrackingUbicacion,
-    CuentaTecnico
+    CuentaTecnico,
+    CiudadTecnico
 };
