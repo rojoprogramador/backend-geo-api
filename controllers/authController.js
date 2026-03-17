@@ -98,7 +98,7 @@ export const login = async ( req, res ) => {
                 {
                     model: Tecnico,
                     as: 'perfil_tecnico',
-                    attributes: ['estado_validacion'],
+                    attributes: ['estado_validacion', 'disponible_inmediato', 'radio_cobertura_km'],
                     required: false,
                 },
             ],
@@ -132,9 +132,11 @@ export const login = async ( req, res ) => {
             rol: usuario.Rol.descripcion,
         };
 
-        // Agregar estado_validacion solo si es técnico y tiene perfil_tecnico
+        // Agregar campos del perfil técnico si es técnico
         if (usuario.Rol.descripcion === 'TECNICO' && usuario.perfil_tecnico) {
-            responseUsuario.estado_validacion = usuario.perfil_tecnico.estado_validacion;
+            responseUsuario.estado_validacion  = usuario.perfil_tecnico.estado_validacion;
+            responseUsuario.disponible_inmediato = usuario.perfil_tecnico.disponible_inmediato;
+            responseUsuario.radio_cobertura_km  = usuario.perfil_tecnico.radio_cobertura_km;
         }
 
         res.json({

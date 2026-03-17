@@ -1,4 +1,5 @@
 import {
+    sequelize,
     Tecnico,
     Ciudad,
     CiudadTecnico,
@@ -14,17 +15,21 @@ import logger from '../utils/logger.js';
  * @swagger
  * /tecnicos/ciudades:
  *   post:
- *     summary: Agregar ciudad de operación al perfil del técnico
+ *     summary: Agregar ciudades de operación al perfil del técnico
  *     description: |
- *       Permite al técnico agregar una ciudad donde puede prestar servicios,
- *       adicional a su ciudad base.
+ *       Permite al técnico agregar una o varias ciudades donde puede prestar
+ *       servicios, adicional a su ciudad base.
  *
  *       **Solo técnicos autenticados.**
  *
- *       **Validaciones:**
- *       - La ciudad debe existir y estar activa.
- *       - No se puede agregar una ciudad que ya esté registrada.
- *       - No se puede agregar la ciudad base (ya está implícita).
+ *       Se puede enviar un array `ciudades` con múltiples IDs para registrarlas
+ *       en una sola petición. La operación es atómica: si alguna falla, ninguna
+ *       se registra.
+ *
+ *       **Validaciones por cada ciudad:**
+ *       - Debe existir y estar activa.
+ *       - No puede ser la ciudad base (ya está implícita).
+ *       - No puede estar ya registrada como ciudad de operación.
  *     tags: [Tecnicos]
  *     security:
  *       - bearerAuth: []
@@ -35,15 +40,26 @@ import logger from '../utils/logger.js';
  *           schema:
  *             type: object
  *             required:
- *               - id_ciudad
+ *               - ciudades
  *             properties:
- *               id_ciudad:
- *                 type: integer
- *                 example: 3
- *                 description: ID de la ciudad donde puede operar
+ *               ciudades:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 example: [3, 5, 7]
+ *                 description: Array de IDs de ciudades donde puede operar
+ *           examples:
+ *             multiples:
+ *               summary: Agregar varias ciudades
+ *               value:
+ *                 ciudades: [3, 5, 7]
+ *             una_sola:
+ *               summary: Agregar una sola ciudad
+ *               value:
+ *                 ciudades: [3]
  *     responses:
  *       201:
- *         description: Ciudad de operación agregada exitosamente
+ *         description: Ciudades de operación agregadas exitosamente
  *         content:
  *           application/json:
  *             schema:
@@ -54,92 +70,134 @@ import logger from '../utils/logger.js';
  *                   example: true
  *                 message:
  *                   type: string
- *                   example: "Ciudad de operación agregada exitosamente"
+ *                   example: "3 ciudades de operación agregadas exitosamente"
  *                 data:
- *                   type: object
- *                   properties:
- *                     id_ciudad_tecnico:
- *                       type: integer
- *                       example: 1
- *                     id_ciudad:
- *                       type: integer
- *                       example: 3
- *                     nombre_ciudad:
- *                       type: string
- *                       example: "Palmira"
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id_ciudad_tecnico:
+ *                         type: integer
+ *                         example: 1
+ *                       id_ciudad:
+ *                         type: integer
+ *                         example: 3
+ *                       nombre_ciudad:
+ *                         type: string
+ *                         example: "Palmira"
  *       400:
  *         $ref: '#/components/responses/ValidationError'
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
  *       409:
- *         description: Ya tienes esta ciudad registrada
+ *         description: Una o más ciudades ya están registradas o son la ciudad base
  */
 export const agregarCiudadOperacion = async (req, res) => {
+    const t = await sequelize.transaction();
+
     try {
         if (req.usuario.rol !== 'TECNICO') {
+            await t.rollback();
             throw new ForbiddenError('Esta ruta es exclusiva para técnicos');
         }
 
-        const { id_ciudad } = req.body;
+        const { ciudades } = req.body;
 
-        if (!id_ciudad) {
-            throw new ValidationError('El campo id_ciudad es requerido');
+        // Validar que se envíe un array no vacío
+        if (!ciudades || !Array.isArray(ciudades) || ciudades.length === 0) {
+            await t.rollback();
+            throw new ValidationError('Debe enviar un array "ciudades" con al menos un id_ciudad');
+        }
+
+        // Validar que todos los elementos sean enteros positivos
+        const idsInvalidos = ciudades.filter(id => !Number.isInteger(id) || id <= 0);
+        if (idsInvalidos.length > 0) {
+            await t.rollback();
+            throw new ValidationError('Todos los IDs en el array ciudades deben ser enteros positivos');
+        }
+
+        // Validar que no haya duplicados en el array enviado
+        const idsUnicos = [...new Set(ciudades)];
+        if (idsUnicos.length !== ciudades.length) {
+            await t.rollback();
+            throw new ValidationError('El array ciudades contiene IDs duplicados');
         }
 
         // Buscar el técnico autenticado
         const tecnico = await Tecnico.findOne({
-            where: { id_usuario: req.usuario.id_usuario }
+            where: { id_usuario: req.usuario.id_usuario },
+            transaction: t,
         });
 
         if (!tecnico) {
+            await t.rollback();
             throw new NotFoundError('No se encontró el perfil de técnico');
         }
 
-        // Verificar que la ciudad existe y está activa
-        const ciudad = await Ciudad.findOne({
-            where: { id_ciudad, activo: true }
-        });
-
-        if (!ciudad) {
-            throw new NotFoundError('La ciudad no existe o está inactiva');
-        }
-
-        // Verificar que no sea la ciudad base del técnico
-        if (tecnico.ciudad_base === Number(id_ciudad)) {
+        // Verificar que ninguna sea la ciudad base
+        const esCiudadBase = ciudades.filter(id => tecnico.ciudad_base === id);
+        if (esCiudadBase.length > 0) {
+            await t.rollback();
             throw new ConflictError('No es necesario agregar tu ciudad base, ya está incluida automáticamente');
         }
 
-        // Verificar que no esté duplicada
-        const existente = await CiudadTecnico.findOne({
-            where: {
-                id_tecnico: tecnico.id_tecnico,
-                id_ciudad
-            }
+        // Verificar que todas las ciudades existan y estén activas
+        const ciudadesDB = await Ciudad.findAll({
+            where: { id_ciudad: ciudades, activo: true },
+            transaction: t,
         });
 
-        if (existente) {
-            throw new ConflictError('Ya tienes esta ciudad registrada como zona de operación');
+        if (ciudadesDB.length !== ciudades.length) {
+            const idsEncontrados = new Set(ciudadesDB.map(c => c.id_ciudad));
+            const noEncontradas = ciudades.filter(id => !idsEncontrados.has(id));
+            await t.rollback();
+            throw new NotFoundError(`Las siguientes ciudades no existen o están inactivas: ${noEncontradas.join(', ')}`);
         }
 
-        // Crear la relación
-        const nuevaCiudad = await CiudadTecnico.create({
-            id_tecnico: tecnico.id_tecnico,
-            id_ciudad
+        // Verificar que no estén ya registradas
+        const existentes = await CiudadTecnico.findAll({
+            where: {
+                id_tecnico: tecnico.id_tecnico,
+                id_ciudad: ciudades,
+            },
+            transaction: t,
         });
 
-        logger.info(`agregarCiudadOperacion: Técnico ${tecnico.id_tecnico} agregó ciudad ${id_ciudad} (${ciudad.nombre_ciudad})`);
+        if (existentes.length > 0) {
+            const idsExistentes = existentes.map(e => e.id_ciudad);
+            await t.rollback();
+            throw new ConflictError(`Las siguientes ciudades ya están registradas: ${idsExistentes.join(', ')}`);
+        }
+
+        // Crear todas las relaciones en bulk
+        const registros = ciudades.map(id_ciudad => ({
+            id_tecnico: tecnico.id_tecnico,
+            id_ciudad,
+        }));
+
+        const nuevasCiudades = await CiudadTecnico.bulkCreate(registros, { transaction: t });
+
+        await t.commit();
+
+        // Mapear nombres para la respuesta
+        const ciudadMap = Object.fromEntries(ciudadesDB.map(c => [c.id_ciudad, c.nombre_ciudad]));
+
+        logger.info(`agregarCiudadOperacion: Técnico ${tecnico.id_tecnico} agregó ${ciudades.length} ciudades: ${ciudades.map(id => ciudadMap[id]).join(', ')}`);
 
         return res.status(201).json({
             success: true,
-            message: 'Ciudad de operación agregada exitosamente',
-            data: {
-                id_ciudad_tecnico: nuevaCiudad.id_ciudad_tecnico,
-                id_ciudad: ciudad.id_ciudad,
-                nombre_ciudad: ciudad.nombre_ciudad
-            }
+            message: `${ciudades.length} ciudad${ciudades.length > 1 ? 'es' : ''} de operación agregada${ciudades.length > 1 ? 's' : ''} exitosamente`,
+            data: nuevasCiudades.map(nc => ({
+                id_ciudad_tecnico: nc.id_ciudad_tecnico,
+                id_ciudad: nc.id_ciudad,
+                nombre_ciudad: ciudadMap[nc.id_ciudad] ?? null,
+            }))
         });
 
     } catch (error) {
+        if (!t.finished) {
+            await t.rollback();
+        }
         return handleError(res, error);
     }
 };

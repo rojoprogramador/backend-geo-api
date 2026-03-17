@@ -665,15 +665,15 @@ export const actualizarPerfilTecnico = async (req, res) => {
         // ----------------------------------------------------------------
         // 2. Extraer únicamente los campos editables del body
         // ----------------------------------------------------------------
-        const { telefono, correo_electronico, id_ciudad, disponible_inmediato } = req.body;
+        const { telefono, correo_electronico, id_ciudad, disponible_inmediato, radio_cobertura_km } = req.body;
 
         // ----------------------------------------------------------------
         // 3. Verificar que al menos un campo editable fue enviado
         // ----------------------------------------------------------------
-        if (!telefono && !correo_electronico && id_ciudad === undefined && disponible_inmediato === undefined) {
+        if (!telefono && !correo_electronico && id_ciudad === undefined && disponible_inmediato === undefined && radio_cobertura_km === undefined) {
             await t.rollback();
             throw new ValidationError('Error de validación', [
-                'Debe enviar al menos un campo para actualizar: telefono, correo_electronico, id_ciudad o disponible_inmediato',
+                'Debe enviar al menos un campo para actualizar: telefono, correo_electronico, id_ciudad, disponible_inmediato o radio_cobertura_km',
             ]);
         }
 
@@ -701,6 +701,13 @@ export const actualizarPerfilTecnico = async (req, res) => {
 
         if (disponible_inmediato !== undefined && typeof disponible_inmediato !== 'boolean') {
             erroresFormato.push('El campo disponible_inmediato debe ser true o false');
+        }
+
+        if (radio_cobertura_km !== undefined) {
+            const radioNum = Number(radio_cobertura_km);
+            if (!Number.isInteger(radioNum) || radioNum < 1 || radioNum > 100) {
+                erroresFormato.push('El campo radio_cobertura_km debe ser un entero entre 1 y 100');
+            }
         }
 
         if (erroresFormato.length > 0) {
@@ -768,6 +775,7 @@ export const actualizarPerfilTecnico = async (req, res) => {
         const camposTecnico = {};
         if (id_ciudad !== undefined)            camposTecnico.ciudad_base = Number(id_ciudad);
         if (disponible_inmediato !== undefined)  camposTecnico.disponible_inmediato = disponible_inmediato;
+        if (radio_cobertura_km !== undefined)    camposTecnico.radio_cobertura_km = Number(radio_cobertura_km);
 
         if (Object.keys(camposTecnico).length > 0) {
             await Tecnico.update(camposTecnico, {
@@ -807,6 +815,7 @@ export const actualizarPerfilTecnico = async (req, res) => {
                 telefono:             usuarioActualizado.telefono,
                 ciudad_base:          tecnicoActualizado?.Ciudad?.nombre_ciudad ?? null,
                 disponible_inmediato: tecnicoActualizado?.disponible_inmediato ?? null,
+                radio_cobertura_km:   tecnicoActualizado?.radio_cobertura_km ?? null,
             },
         });
 
