@@ -503,7 +503,7 @@ describe('clienteController', () => {
       expect(mockTransaction.rollback).toHaveBeenCalled();
       const errorArg = mockHandleError.mock.calls[0][1];
       expect(errorArg).toBeInstanceOf(ValidationError);
-      expect(errorArg.errors).toContain('Debe enviar al menos un campo para actualizar: telefono o correo_electronico');
+      expect(errorArg.errors).toContain('Debe enviar al menos un campo para actualizar: telefono, correo_electronico o id_ciudad');
     });
 
     it('4. Invalid phone format → 400', async () => {

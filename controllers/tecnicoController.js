@@ -403,10 +403,25 @@ export const registrarTecnico = async (req, res) => {
  *                     tipo_documento:
  *                       type: string
  *                       example: "CC"
+ *                     id_ciudad:
+ *                       type: integer
+ *                       nullable: true
+ *                       example: 1
  *                     ciudad_base:
  *                       type: string
  *                       example: "Cali"
  *                       nullable: true
+ *                     ciudades_operacion:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id_ciudad:
+ *                             type: integer
+ *                             example: 3
+ *                           nombre_ciudad:
+ *                             type: string
+ *                             example: "Palmira"
  *                     estado_validacion:
  *                       type: string
  *                       enum: [PENDIENTE_VALIDACION, ACTIVO, SUSPENDIDO, RECHAZADO]
@@ -466,6 +481,12 @@ export const obtenerPerfilTecnico = async (req, res) => {
                     model: Ciudad,
                     attributes: ['id_ciudad', 'nombre_ciudad'],
                 },
+                {
+                    model: Ciudad,
+                    as: 'ciudades_operacion',
+                    attributes: ['id_ciudad', 'nombre_ciudad'],
+                    through: { attributes: [] },
+                },
             ],
         });
 
@@ -492,6 +513,10 @@ export const obtenerPerfilTecnico = async (req, res) => {
                 tipo_documento:      usuario.TipoDoc?.descripcion ?? null,
                 id_ciudad:           tecnico.Ciudad?.id_ciudad ?? null,
                 ciudad_base:         tecnico.Ciudad?.nombre_ciudad ?? null,
+                ciudades_operacion:  tecnico.ciudades_operacion?.map(c => ({
+                    id_ciudad: c.id_ciudad,
+                    nombre_ciudad: c.nombre_ciudad,
+                })) ?? [],
                 estado_validacion:   tecnico.estado_validacion,
                 prom_calificacion:   tecnico.prom_calificacion,
                 disponible_inmediato: tecnico.disponible_inmediato,

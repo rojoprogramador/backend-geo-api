@@ -436,6 +436,14 @@ export const registrarCliente = async (req, res) => {
  *                     tipo_documento:
  *                       type: string
  *                       example: "CC"
+ *                     id_ciudad:
+ *                       type: integer
+ *                       nullable: true
+ *                       example: 1
+ *                     ciudad:
+ *                       type: string
+ *                       nullable: true
+ *                       example: "Cali"
  *       401:
  *         $ref: '#/components/responses/UnauthorizedError'
  *       403:
@@ -471,11 +479,16 @@ export const obtenerPerfilCliente = async (req, res) => {
                         'telefono',
                         'num_identificacion',
                         'fecha_nacimiento',
+                        'id_ciudad',
                     ],
                     include: [
                         {
                             model: TipoDoc,
                             attributes: ['descripcion'],
+                        },
+                        {
+                            model: Ciudad,
+                            attributes: ['id_ciudad', 'nombre_ciudad'],
                         },
                     ],
                 },
@@ -503,6 +516,8 @@ export const obtenerPerfilCliente = async (req, res) => {
                 num_identificacion:  usuario.num_identificacion,
                 fecha_nacimiento:    usuario.fecha_nacimiento,
                 tipo_documento:      usuario.TipoDoc?.descripcion ?? null,
+                id_ciudad:           usuario.id_ciudad ?? null,
+                ciudad:              usuario.Ciudad?.nombre_ciudad ?? null,
             },
         });
 
@@ -524,12 +539,13 @@ export const obtenerPerfilCliente = async (req, res) => {
  *       **Campos editables:**
  *       - `telefono`: número celular colombiano (10 dígitos comenzando con 3)
  *       - `correo_electronico`: debe ser un email válido y no estar en uso por otro usuario
+ *       - `id_ciudad`: ID de la ciudad de residencia (debe existir en la tabla ciudades)
  *
  *       **Campos de solo lectura (no se pueden cambiar):**
  *       - `nombre`, `apellido`, `num_identificacion`, `fecha_nacimiento`, `id_tipoDoc`
  *
  *       **Reglas de negocio:**
- *       - Al menos uno de los dos campos debe estar presente en el body.
+ *       - Al menos uno de los campos editables debe estar presente en el body.
  *       - Si se envía `correo_electronico`, se verifica que no esté registrado en otro usuario.
  *       - La operación se realiza dentro de una transacción Sequelize.
  *     tags: [Clientes]
@@ -552,6 +568,10 @@ export const obtenerPerfilCliente = async (req, res) => {
  *                 format: email
  *                 example: "nueva.direccion@example.com"
  *                 description: "Nuevo correo electrónico, debe ser único en el sistema"
+ *               id_ciudad:
+ *                 type: integer
+ *                 example: 2
+ *                 description: "ID de la ciudad de residencia"
  *           examples:
  *             solo_telefono:
  *               summary: Actualizar solo teléfono
@@ -561,6 +581,10 @@ export const obtenerPerfilCliente = async (req, res) => {
  *               summary: Actualizar solo correo
  *               value:
  *                 correo_electronico: "nueva.direccion@example.com"
+ *             cambiar_ciudad:
+ *               summary: Actualizar ciudad de residencia
+ *               value:
+ *                 id_ciudad: 2
  *             ambos_campos:
  *               summary: Actualizar teléfono y correo
  *               value:
@@ -592,6 +616,14 @@ export const obtenerPerfilCliente = async (req, res) => {
  *                     telefono:
  *                       type: string
  *                       example: "3209876543"
+ *                     id_ciudad:
+ *                       type: integer
+ *                       nullable: true
+ *                       example: 2
+ *                     ciudad:
+ *                       type: string
+ *                       nullable: true
+ *                       example: "Bogotá"
  *       400:
  *         $ref: '#/components/responses/ValidationError'
  *       401:
@@ -628,15 +660,15 @@ export const actualizarPerfilCliente = async (req, res) => {
         // 2. Extraer únicamente los campos editables del body
         //    (nombre, apellido, num_identificacion son de solo lectura)
         // ----------------------------------------------------------------
-        const { telefono, correo_electronico } = req.body;
+        const { telefono, correo_electronico, id_ciudad } = req.body;
 
         // ----------------------------------------------------------------
         // 3. Verificar que al menos un campo editable fue enviado
         // ----------------------------------------------------------------
-        if (!telefono && !correo_electronico) {
+        if (!telefono && !correo_electronico && id_ciudad === undefined) {
             await t.rollback();
             throw new ValidationError('Error de validación', [
-                'Debe enviar al menos un campo para actualizar: telefono o correo_electronico',
+                'Debe enviar al menos un campo para actualizar: telefono, correo_electronico o id_ciudad',
             ]);
         }
 
@@ -655,6 +687,12 @@ export const actualizarPerfilCliente = async (req, res) => {
             erroresFormato.push('El correo electrónico no tiene un formato válido');
         }
 
+        if (id_ciudad !== undefined) {
+            if (!Number.isInteger(Number(id_ciudad)) || Number(id_ciudad) < 1) {
+                erroresFormato.push('El id_ciudad debe ser un entero positivo');
+            }
+        }
+
         if (erroresFormato.length > 0) {
             await t.rollback();
             throw new ValidationError('Error de validación', erroresFormato);
@@ -664,6 +702,15 @@ export const actualizarPerfilCliente = async (req, res) => {
         // 5. Verificar que el Cliente existe
         // ----------------------------------------------------------------
         await obtenerCliente(req.usuario.id_usuario, t);
+
+        // Verificar que la ciudad existe si se está cambiando
+        if (id_ciudad !== undefined) {
+            const ciudadExiste = await Ciudad.findByPk(id_ciudad, { transaction: t });
+            if (!ciudadExiste) {
+                await t.rollback();
+                throw new NotFoundError(`No se encontró la ciudad con id ${id_ciudad}`);
+            }
+        }
 
         // ----------------------------------------------------------------
         // 6. Si se está cambiando el correo, verificar que no esté en uso
@@ -687,6 +734,7 @@ export const actualizarPerfilCliente = async (req, res) => {
         const camposActualizar = {};
         if (telefono)            camposActualizar.telefono           = telefono;
         if (correo_electronico)  camposActualizar.correo_electronico = correo_electronico;
+        if (id_ciudad !== undefined) camposActualizar.id_ciudad      = id_ciudad;
 
         // ----------------------------------------------------------------
         // 8. Actualizar el Usuario dentro de la transacción
@@ -700,7 +748,8 @@ export const actualizarPerfilCliente = async (req, res) => {
 
         // Recuperar datos actualizados para la respuesta
         const usuarioActualizado = await Usuario.findByPk(req.usuario.id_usuario, {
-            attributes: ['id_usuario', 'correo_electronico', 'telefono'],
+            attributes: ['id_usuario', 'correo_electronico', 'telefono', 'id_ciudad'],
+            include: [{ model: Ciudad, attributes: ['id_ciudad', 'nombre_ciudad'] }],
         });
 
         logger.info(
@@ -714,6 +763,8 @@ export const actualizarPerfilCliente = async (req, res) => {
                 id_usuario:         usuarioActualizado.id_usuario,
                 correo_electronico: usuarioActualizado.correo_electronico,
                 telefono:           usuarioActualizado.telefono,
+                id_ciudad:          usuarioActualizado.id_ciudad ?? null,
+                ciudad:             usuarioActualizado.Ciudad?.nombre_ciudad ?? null,
             },
         });
 
