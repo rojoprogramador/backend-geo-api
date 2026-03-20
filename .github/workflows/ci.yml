@@ -56,6 +56,11 @@ jobs:
           echo "🌱 Ejecutando seeders..."
           npx sequelize-cli db:seed:all --env test
 
+      - name: Run Unit Tests with Coverage
+        run: npm run test:unit -- --coverage
+        env:
+          NODE_ENV: test
+
       - name: sonarCloud Scan
         uses: SonarSource/sonarqube-scan-action@v4
         env:

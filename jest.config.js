@@ -15,6 +15,12 @@ export default {
       testMatch: ['<rootDir>/tests/unit/**/*.test.js'],
       testEnvironment: 'node',
       transform: {},
+      collectCoverageFrom: [
+        'controllers/**/*.js',
+        'middleware/**/*.js',
+        'utils/**/*.js',
+      ],
+      coverageDirectory: 'coverage',
     },
     {
       displayName: 'integration',
