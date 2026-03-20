@@ -6,6 +6,7 @@ const mockModels = {
   sequelize: { transaction: jest.fn() },
   Usuario: { findOne: jest.fn(), create: jest.fn(), findByPk: jest.fn(), update: jest.fn() },
   Tecnico: { findOne: jest.fn(), findByPk: jest.fn(), create: jest.fn(), update: jest.fn(), findAndCountAll: jest.fn() },
+  Cliente: { findOne: jest.fn(), create: jest.fn() },
   Rol: { findOne: jest.fn() },
   TipoDoc: { findByPk: jest.fn() },
   Ciudad: { findByPk: jest.fn() },

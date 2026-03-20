@@ -20,8 +20,15 @@ import ciudadRoutes from './routes/ciudadRoutes.js';
 const app = express();
 const PORT = 3000;
 
-//Middlewares
-app.use(cors());
+// Middlewares
+const corsOptions = {
+    origin: process.env.ALLOWED_ORIGINS
+        ? process.env.ALLOWED_ORIGINS.split(',')
+        : ['http://localhost:3000'],
+    credentials: true,
+    optionsSuccessStatus: 200,
+};
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Servir archivos estáticos de uploads (fotos de perfil)
@@ -72,6 +79,11 @@ app.get('/', (req, res) => {
 //Sincronizar modelos con la base de datos
 async function main() {
     try {
+        // Validar JWT_SECRET en inicio
+        if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+            console.warn('⚠️  ADVERTENCIA: JWT_SECRET debe tener al menos 32 caracteres para producción');
+        }
+
         //conexión a la base de datos
         await sequelize.authenticate();
         console.log('✅ Connection has been established successfully. ✅');

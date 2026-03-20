@@ -3,19 +3,7 @@ import { handleError } from '../utils/errorHandler.js';
 import { ValidationError, ConflictError, NotFoundError } from '../utils/errors/AppError.js';
 import logger from '../utils/logger.js';
 import { Op } from 'sequelize';
-
-// ---------------------------------------------------------------------------
-// Helpers de validación locales
-// ---------------------------------------------------------------------------
-
-/**
- * Valida el nombre de una subcategoría: letras, números, tildes, ñ, espacios
- * y guiones. Entre 3 y 50 caracteres.
- * @param {string} nombre
- * @returns {boolean}
- */
-const esNombreValido = (nombre) =>
-    typeof nombre === 'string' && /^[a-zA-ZÀ-ÿ\u00f1\u00d1\s\-0-9]{3,50}$/.test(nombre.trim());
+import { esNombreValido } from '../utils/validators.js';
 
 // ---------------------------------------------------------------------------
 

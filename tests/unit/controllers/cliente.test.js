@@ -16,6 +16,10 @@ const mockModels = {
     findOne: jest.fn(),
     create: jest.fn()
   },
+  Tecnico: {
+    findOne: jest.fn(),
+    create: jest.fn()
+  },
   Rol: {
     findOne: jest.fn()
   },

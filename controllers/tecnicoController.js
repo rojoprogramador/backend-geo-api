@@ -14,31 +14,8 @@ import {
 import { handleError } from '../utils/errorHandler.js';
 import { ValidationError, ConflictError, NotFoundError, ForbiddenError } from '../utils/errors/AppError.js';
 import logger from '../utils/logger.js';
-
-// ---------------------------------------------------------------------------
-// Expresiones regulares de validación (HU-02)
-// Reutilizamos las mismas reglas que clienteController (HU-01)
-// ---------------------------------------------------------------------------
-const REGEX_NOMBRE    = /^[a-zA-ZÀ-ÿ\u00f1\u00d1\s]{5,100}$/;
-const REGEX_DOCUMENTO = /^\d{6,12}$/;
-const REGEX_CORREO    = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const REGEX_TELEFONO  = /^3\d{9}$/;
-const REGEX_FECHA     = /^\d{4}-\d{2}-\d{2}$/;
-
-/**
- * Valida la fortaleza de la contrasena:
- * minimo 8 caracteres, 1 mayuscula, 1 minuscula, 1 numero y 1 caracter especial.
- * @param {string} password
- * @returns {boolean}
- */
-const esContrasenaFuerte = (password) => {
-    if (!password || password.length < 8) return false;
-    const tieneUpper  = /[A-Z]/.test(password);
-    const tieneLower  = /[a-z]/.test(password);
-    const tieneNumero = /[0-9]/.test(password);
-    const tieneEsp    = /[^A-Za-z0-9]/.test(password);
-    return tieneUpper && tieneLower && tieneNumero && tieneEsp;
-};
+import { REGEX_NOMBRE, REGEX_DOCUMENTO, REGEX_CORREO, REGEX_TELEFONO, REGEX_FECHA, esContrasenaFuerte } from '../utils/validators.js';
+import { obtenerTecnico as buscarPerfilTecnico } from '../utils/profileHelpers.js';
 
 // ---------------------------------------------------------------------------
 
@@ -718,15 +695,7 @@ export const actualizarPerfilTecnico = async (req, res) => {
         // ----------------------------------------------------------------
         // 5. Verificar que el Técnico existe
         // ----------------------------------------------------------------
-        const tecnico = await Tecnico.findOne({
-            where: { id_usuario: req.usuario.id_usuario },
-            transaction: t,
-        });
-
-        if (!tecnico) {
-            await t.rollback();
-            throw new NotFoundError('No se encontró el perfil de técnico asociado a este usuario');
-        }
+        const tecnico = await buscarPerfilTecnico(req.usuario.id_usuario, t);
 
         // ----------------------------------------------------------------
         // 6. Si se está cambiando el correo, verificar unicidad
@@ -2096,13 +2065,7 @@ export const uploadFotoPerfil = async (req, res) => {
         }
 
         // Buscar el tecnico autenticado
-        const tecnico = await Tecnico.findOne({
-            where: { id_usuario: req.usuario.id_usuario }
-        });
-
-        if (!tecnico) {
-            throw new NotFoundError('No se encontró el perfil de técnico');
-        }
+        const tecnico = await buscarPerfilTecnico(req.usuario.id_usuario);
 
         // Construir la URL relativa del archivo
         const urlFoto = `/uploads/fotos/${req.file.filename}`;

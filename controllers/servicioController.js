@@ -16,6 +16,7 @@ import {
 import { handleError } from '../utils/errorHandler.js';
 import { ValidationError, NotFoundError, ForbiddenError, ConflictError } from '../utils/errors/AppError.js';
 import logger from '../utils/logger.js';
+import { obtenerCliente, obtenerTecnico } from '../utils/profileHelpers.js';
 
 // ---------------------------------------------------------------------------
 // Constantes de estados de solicitud (sincronizadas con seeders de EstadoSolicitud)
@@ -153,15 +154,7 @@ export const iniciarServicio = async (req, res) => {
         // ----------------------------------------------------------------
         // 2. Obtener el perfil Tecnico del usuario autenticado
         // ----------------------------------------------------------------
-        const tecnico = await Tecnico.findOne({
-            where: { id_usuario: req.usuario.id_usuario },
-            transaction: t,
-        });
-
-        if (!tecnico) {
-            await t.rollback();
-            throw new NotFoundError('No se encontró el perfil de técnico asociado a este usuario');
-        }
+        const tecnico = await obtenerTecnico(req.usuario.id_usuario, t);
 
         // ----------------------------------------------------------------
         // 3. Buscar la solicitud y verificar que le pertenece al técnico
@@ -491,15 +484,7 @@ export const finalizarServicio = async (req, res) => {
         // ----------------------------------------------------------------
         // 3. Obtener el perfil Tecnico del usuario autenticado
         // ----------------------------------------------------------------
-        const tecnico = await Tecnico.findOne({
-            where: { id_usuario: req.usuario.id_usuario },
-            transaction: t,
-        });
-
-        if (!tecnico) {
-            await t.rollback();
-            throw new NotFoundError('No se encontró el perfil de técnico asociado a este usuario');
-        }
+        const tecnico = await obtenerTecnico(req.usuario.id_usuario, t);
 
         // ----------------------------------------------------------------
         // 4. Buscar el Servicio con su solicitud de origen para acceder
@@ -804,13 +789,7 @@ export const obtenerServiciosPorTecnico = async (req, res) => {
         // ----------------------------------------------------------------
         // 2. Obtener el perfil Tecnico del usuario autenticado
         // ----------------------------------------------------------------
-        const tecnico = await Tecnico.findOne({
-            where: { id_usuario: req.usuario.id_usuario },
-        });
-
-        if (!tecnico) {
-            throw new NotFoundError('No se encontró el perfil de técnico asociado a este usuario');
-        }
+        const tecnico = await obtenerTecnico(req.usuario.id_usuario);
 
         // ----------------------------------------------------------------
         // 3. Consultar servicios del técnico con relaciones completas
@@ -1015,13 +994,7 @@ export const obtenerServiciosPorCliente = async (req, res) => {
         // ----------------------------------------------------------------
         // 2. Obtener el perfil Cliente del usuario autenticado
         // ----------------------------------------------------------------
-        const cliente = await Cliente.findOne({
-            where: { id_usuario: req.usuario.id_usuario },
-        });
-
-        if (!cliente) {
-            throw new NotFoundError('No se encontró el perfil de cliente asociado a este usuario');
-        }
+        const cliente = await obtenerCliente(req.usuario.id_usuario);
 
         // ----------------------------------------------------------------
         // 3. Consultar servicios del cliente con relaciones completas
@@ -1343,18 +1316,14 @@ export const obtenerServicioPorId = async (req, res) => {
 
         if (rol === 'CLIENTE') {
             // Verificar que el cliente autenticado sea el dueño del servicio
-            const cliente = await Cliente.findOne({
-                where: { id_usuario: req.usuario.id_usuario },
-            });
-            if (!cliente || servicio.id_cliente !== cliente.id_cliente) {
+            const cliente = await obtenerCliente(req.usuario.id_usuario);
+            if (servicio.id_cliente !== cliente.id_cliente) {
                 throw new ForbiddenError('No tienes permiso para ver este servicio');
             }
         } else if (rol === 'TECNICO') {
             // Verificar que el técnico autenticado sea el técnico del servicio
-            const tecnico = await Tecnico.findOne({
-                where: { id_usuario: req.usuario.id_usuario },
-            });
-            if (!tecnico || servicio.id_tecnico !== tecnico.id_tecnico) {
+            const tecnico = await obtenerTecnico(req.usuario.id_usuario);
+            if (servicio.id_tecnico !== tecnico.id_tecnico) {
                 throw new ForbiddenError('No tienes permiso para ver este servicio');
             }
         }

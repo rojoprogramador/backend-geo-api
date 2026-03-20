@@ -8,6 +8,7 @@ import {
 import { handleError } from '../utils/errorHandler.js';
 import { ValidationError, NotFoundError, ForbiddenError, ConflictError } from '../utils/errors/AppError.js';
 import logger from '../utils/logger.js';
+import { obtenerTecnico } from '../utils/profileHelpers.js';
 
 // ---------------------------------------------------------------------------
 
@@ -70,13 +71,7 @@ export const agregarEspecialidad = async (req, res) => {
         }
 
         // Buscar el tecnico autenticado
-        const tecnico = await Tecnico.findOne({
-            where: { id_usuario: req.usuario.id_usuario }
-        });
-
-        if (!tecnico) {
-            throw new NotFoundError('No se encontró el perfil de técnico');
-        }
+        const tecnico = await obtenerTecnico(req.usuario.id_usuario);
 
         // Verificar que la subcategoria existe y está activa
         const subcategoria = await Subcategoria.findOne({
@@ -180,13 +175,7 @@ export const obtenerMisEspecialidades = async (req, res) => {
         }
 
         // Buscar el tecnico autenticado
-        const tecnico = await Tecnico.findOne({
-            where: { id_usuario: req.usuario.id_usuario }
-        });
-
-        if (!tecnico) {
-            throw new NotFoundError('No se encontró el perfil de técnico');
-        }
+        const tecnico = await obtenerTecnico(req.usuario.id_usuario);
 
         // Obtener todas las especialidades del técnico
         const especialidades = await Especialidad.findAll({
@@ -262,13 +251,7 @@ export const eliminarEspecialidad = async (req, res) => {
         const { id } = req.params;
 
         // Buscar el tecnico autenticado
-        const tecnico = await Tecnico.findOne({
-            where: { id_usuario: req.usuario.id_usuario }
-        });
-
-        if (!tecnico) {
-            throw new NotFoundError('No se encontró el perfil de técnico');
-        }
+        const tecnico = await obtenerTecnico(req.usuario.id_usuario);
 
         // Buscar la especialidad
         const especialidad = await Especialidad.findOne({

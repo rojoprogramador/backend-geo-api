@@ -15,6 +15,7 @@ import {
 import { handleError } from '../utils/errorHandler.js';
 import { ValidationError, NotFoundError, ForbiddenError } from '../utils/errors/AppError.js';
 import logger from '../utils/logger.js';
+import { obtenerCliente, obtenerTecnico } from '../utils/profileHelpers.js';
 
 // ---------------------------------------------------------------------------
 // Constantes de estados de solicitud (sincronizadas con seeders)
@@ -33,6 +34,32 @@ const calcularPriorityScore = (distanciaMetros, promCalificacion) => {
     const calificacionNorm  = (promCalificacion / 5) * 100;            // 0-100
     const penalizacionDist  = (distanciaMetros / 1000) * 2;            // 2 pts por km
     return Math.round(Math.max(0, calificacionNorm - penalizacionDist));
+};
+
+// ---------------------------------------------------------------------------
+// Helper: valida campos comunes de solicitud (inmediata y programada)
+// ---------------------------------------------------------------------------
+const validarCamposSolicitud = (latitud, longitud, id_subcategoria, descripcion, prioridad) => {
+    const erroresFormato = [];
+    const latNum = parseFloat(latitud);
+    const lngNum = parseFloat(longitud);
+
+    if (isNaN(latNum) || latNum < -90 || latNum > 90)
+        erroresFormato.push('La latitud debe ser un número entre -90 y 90');
+    if (isNaN(lngNum) || lngNum < -180 || lngNum > 180)
+        erroresFormato.push('La longitud debe ser un número entre -180 y 180');
+    if (!Number.isInteger(Number(id_subcategoria)) || Number(id_subcategoria) < 1)
+        erroresFormato.push('El id_subcategoria debe ser un entero positivo');
+
+    const descTrimmed = descripcion.trim();
+    if (descTrimmed.length < 10 || descTrimmed.length > 1000)
+        erroresFormato.push('La descripcion debe tener entre 10 y 1000 caracteres');
+
+    const prioridadesValidas = ['BAJA', 'MEDIA', 'ALTA', 'URGENTE'];
+    if (!prioridadesValidas.includes(prioridad))
+        erroresFormato.push(`La prioridad debe ser uno de: ${prioridadesValidas.join(', ')}`);
+
+    return { erroresFormato, latNum, lngNum, descTrimmed };
 };
 
 // ---------------------------------------------------------------------------
@@ -161,27 +188,9 @@ export const crearSolicitudInmediata = async (req, res) => {
         // ----------------------------------------------------------------
         // 3. Validaciones de formato (fase 2)
         // ----------------------------------------------------------------
-        const erroresFormato = [];
-
-        const latNum = parseFloat(latitud);
-        const lngNum = parseFloat(longitud);
-
-        if (isNaN(latNum) || latNum < -90 || latNum > 90)
-            erroresFormato.push('La latitud debe ser un número entre -90 y 90');
-
-        if (isNaN(lngNum) || lngNum < -180 || lngNum > 180)
-            erroresFormato.push('La longitud debe ser un número entre -180 y 180');
-
-        if (!Number.isInteger(Number(id_subcategoria)) || Number(id_subcategoria) < 1)
-            erroresFormato.push('El id_subcategoria debe ser un entero positivo');
-
-        const descTrimmed = descripcion.trim();
-        if (descTrimmed.length < 10 || descTrimmed.length > 1000)
-            erroresFormato.push('La descripcion debe tener entre 10 y 1000 caracteres');
-
-        const prioridadesValidas = ['BAJA', 'MEDIA', 'ALTA', 'URGENTE'];
-        if (!prioridadesValidas.includes(prioridad))
-            erroresFormato.push(`La prioridad debe ser uno de: ${prioridadesValidas.join(', ')}`);
+        const { erroresFormato, latNum, lngNum, descTrimmed } = validarCamposSolicitud(
+            latitud, longitud, id_subcategoria, descripcion, prioridad
+        );
 
         if (erroresFormato.length > 0) {
             await t.rollback();
@@ -205,15 +214,7 @@ export const crearSolicitudInmediata = async (req, res) => {
         // ----------------------------------------------------------------
         // 5. Obtener el id_cliente del usuario autenticado
         // ----------------------------------------------------------------
-        const cliente = await Cliente.findOne({
-            where: { id_usuario: req.usuario.id_usuario },
-            transaction: t,
-        });
-
-        if (!cliente) {
-            await t.rollback();
-            throw new NotFoundError('No se encontró el perfil de cliente asociado a este usuario');
-        }
+        const cliente = await obtenerCliente(req.usuario.id_usuario, t);
 
         // ----------------------------------------------------------------
         // 6. Buscar técnicos cercanos con ST_DWithin (servicio inmediato)
@@ -460,27 +461,9 @@ export const crearSolicitudProgramada = async (req, res) => {
         // ----------------------------------------------------------------
         // 3. Validaciones de formato (fase 2)
         // ----------------------------------------------------------------
-        const erroresFormato = [];
-
-        const latNum = parseFloat(latitud);
-        const lngNum = parseFloat(longitud);
-
-        if (isNaN(latNum) || latNum < -90 || latNum > 90)
-            erroresFormato.push('La latitud debe ser un número entre -90 y 90');
-
-        if (isNaN(lngNum) || lngNum < -180 || lngNum > 180)
-            erroresFormato.push('La longitud debe ser un número entre -180 y 180');
-
-        if (!Number.isInteger(Number(id_subcategoria)) || Number(id_subcategoria) < 1)
-            erroresFormato.push('El id_subcategoria debe ser un entero positivo');
-
-        const descTrimmed = descripcion.trim();
-        if (descTrimmed.length < 10 || descTrimmed.length > 1000)
-            erroresFormato.push('La descripcion debe tener entre 10 y 1000 caracteres');
-
-        const prioridadesValidas = ['BAJA', 'MEDIA', 'ALTA', 'URGENTE'];
-        if (!prioridadesValidas.includes(prioridad))
-            erroresFormato.push(`La prioridad debe ser uno de: ${prioridadesValidas.join(', ')}`);
+        const { erroresFormato, latNum, lngNum, descTrimmed } = validarCamposSolicitud(
+            latitud, longitud, id_subcategoria, descripcion, prioridad
+        );
 
         // Validar fecha_programada: parseable y al menos 24 horas en el futuro
         const fechaProgramadaDate = new Date(fecha_programada);
@@ -516,15 +499,7 @@ export const crearSolicitudProgramada = async (req, res) => {
         // ----------------------------------------------------------------
         // 5. Obtener el id_cliente del usuario autenticado
         // ----------------------------------------------------------------
-        const cliente = await Cliente.findOne({
-            where: { id_usuario: req.usuario.id_usuario },
-            transaction: t,
-        });
-
-        if (!cliente) {
-            await t.rollback();
-            throw new NotFoundError('No se encontró el perfil de cliente asociado a este usuario');
-        }
+        const cliente = await obtenerCliente(req.usuario.id_usuario, t);
 
         // ----------------------------------------------------------------
         // 6. Buscar técnicos cercanos con ST_DWithin (servicio programado)
@@ -774,13 +749,7 @@ export const obtenerMisSolicitudes = async (req, res) => {
         // ----------------------------------------------------------------
         // 2. Obtener el id_cliente del usuario autenticado
         // ----------------------------------------------------------------
-        const cliente = await Cliente.findOne({
-            where: { id_usuario: req.usuario.id_usuario },
-        });
-
-        if (!cliente) {
-            throw new NotFoundError('No se encontró el perfil de cliente asociado a este usuario');
-        }
+        const cliente = await obtenerCliente(req.usuario.id_usuario);
 
         // ----------------------------------------------------------------
         // 3. Construir el filtro where
@@ -1105,13 +1074,7 @@ export const obtenerSolicitudesTecnico = async (req, res) => {
         // ----------------------------------------------------------------
         // 2. Obtener el id_tecnico del usuario autenticado
         // ----------------------------------------------------------------
-        const tecnico = await Tecnico.findOne({
-            where: { id_usuario: req.usuario.id_usuario },
-        });
-
-        if (!tecnico) {
-            throw new NotFoundError('No se encontró el perfil de técnico asociado a este usuario');
-        }
+        const tecnico = await obtenerTecnico(req.usuario.id_usuario);
 
         // ----------------------------------------------------------------
         // 3. Buscar entradas en la cola con estado NOTIFICADO o VISTO
@@ -1389,15 +1352,7 @@ export const cancelarSolicitud = async (req, res) => {
         // ----------------------------------------------------------------
         // 3. Obtener el cliente autenticado
         // ----------------------------------------------------------------
-        const cliente = await Cliente.findOne({
-            where: { id_usuario: req.usuario.id_usuario },
-            transaction: t,
-        });
-
-        if (!cliente) {
-            await t.rollback();
-            throw new NotFoundError('No se encontró el perfil de cliente asociado a este usuario');
-        }
+        const cliente = await obtenerCliente(req.usuario.id_usuario, t);
 
         // ----------------------------------------------------------------
         // 4. Buscar la solicitud con sus citas y cola de técnicos

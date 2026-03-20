@@ -51,6 +51,7 @@ export function createTransactionMock() {
   return {
     commit: jest.fn().mockResolvedValue(undefined),
     rollback: jest.fn().mockResolvedValue(undefined),
+    finished: undefined,
   };
 }
 
@@ -96,6 +97,7 @@ export function createAllModelMocks() {
     EstadoSolicitud: createModelMock('EstadoSolicitud'),
     Especialidad: createModelMock('Especialidad'),
     CertificadoTecnico: createModelMock('CertificadoTecnico'),
+    CiudadTecnico: createModelMock('CiudadTecnico'),
   };
 }
 

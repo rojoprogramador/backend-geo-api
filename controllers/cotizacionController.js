@@ -3,7 +3,6 @@ import {
     sequelize,
     Cotizacion,
     Solicitud,
-    Cliente,
     Tecnico,
     TecnicoSolicitudQueue,
     EstadoSolicitud,
@@ -12,6 +11,7 @@ import {
 import { handleError } from '../utils/errorHandler.js';
 import { ValidationError, NotFoundError, ForbiddenError, ConflictError } from '../utils/errors/AppError.js';
 import logger from '../utils/logger.js';
+import { obtenerCliente, obtenerTecnico } from '../utils/profileHelpers.js';
 
 // ---------------------------------------------------------------------------
 // Constantes de estados de solicitud (sincronizadas con seeders)
@@ -198,15 +198,7 @@ export const crearCotizacion = async (req, res) => {
         // ----------------------------------------------------------------
         // 4. Obtener el perfil de Tecnico del usuario autenticado
         // ----------------------------------------------------------------
-        const tecnico = await Tecnico.findOne({
-            where: { id_usuario: req.usuario.id_usuario },
-            transaction: t,
-        });
-
-        if (!tecnico) {
-            await t.rollback();
-            throw new NotFoundError('No se encontró el perfil de técnico asociado a este usuario');
-        }
+        const tecnico = await obtenerTecnico(req.usuario.id_usuario, t);
 
         // ----------------------------------------------------------------
         // 5. Verificar que la solicitud existe y está en un estado válido
@@ -446,13 +438,7 @@ export const obtenerCotizacionesSolicitud = async (req, res) => {
         // ----------------------------------------------------------------
         // 1. Obtener el id_cliente del usuario autenticado
         // ----------------------------------------------------------------
-        const cliente = await Cliente.findOne({
-            where: { id_usuario: req.usuario.id_usuario },
-        });
-
-        if (!cliente) {
-            throw new NotFoundError('No se encontró el perfil de cliente asociado a este usuario');
-        }
+        const cliente = await obtenerCliente(req.usuario.id_usuario);
 
         // ----------------------------------------------------------------
         // 2. Verificar que la solicitud existe y pertenece a este cliente
@@ -608,15 +594,7 @@ export const aceptarCotizacion = async (req, res) => {
         // ----------------------------------------------------------------
         // 1. Obtener el id_cliente del usuario autenticado
         // ----------------------------------------------------------------
-        const cliente = await Cliente.findOne({
-            where: { id_usuario: req.usuario.id_usuario },
-            transaction: t,
-        });
-
-        if (!cliente) {
-            await t.rollback();
-            throw new NotFoundError('No se encontró el perfil de cliente asociado a este usuario');
-        }
+        const cliente = await obtenerCliente(req.usuario.id_usuario, t);
 
         // ----------------------------------------------------------------
         // 2. Buscar la cotización con su solicitud para verificar propiedad
@@ -859,15 +837,7 @@ export const rechazarCotizacion = async (req, res) => {
         // ----------------------------------------------------------------
         // 1. Obtener el id_cliente del usuario autenticado
         // ----------------------------------------------------------------
-        const cliente = await Cliente.findOne({
-            where: { id_usuario: req.usuario.id_usuario },
-            transaction: t,
-        });
-
-        if (!cliente) {
-            await t.rollback();
-            throw new NotFoundError('No se encontró el perfil de cliente asociado a este usuario');
-        }
+        const cliente = await obtenerCliente(req.usuario.id_usuario, t);
 
         // ----------------------------------------------------------------
         // 2. Buscar la cotización con su solicitud

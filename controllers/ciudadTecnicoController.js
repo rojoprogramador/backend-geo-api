@@ -8,6 +8,7 @@ import {
 import { handleError } from '../utils/errorHandler.js';
 import { ValidationError, NotFoundError, ForbiddenError, ConflictError } from '../utils/errors/AppError.js';
 import logger from '../utils/logger.js';
+import { obtenerTecnico } from '../utils/profileHelpers.js';
 
 // ---------------------------------------------------------------------------
 
@@ -124,15 +125,7 @@ export const agregarCiudadOperacion = async (req, res) => {
         }
 
         // Buscar el técnico autenticado
-        const tecnico = await Tecnico.findOne({
-            where: { id_usuario: req.usuario.id_usuario },
-            transaction: t,
-        });
-
-        if (!tecnico) {
-            await t.rollback();
-            throw new NotFoundError('No se encontró el perfil de técnico');
-        }
+        const tecnico = await obtenerTecnico(req.usuario.id_usuario, t);
 
         // Verificar que ninguna sea la ciudad base
         const esCiudadBase = ciudades.filter(id => tecnico.ciudad_base === id);
@@ -266,8 +259,10 @@ export const obtenerMisCiudades = async (req, res) => {
             throw new ForbiddenError('Esta ruta es exclusiva para técnicos');
         }
 
-        const tecnico = await Tecnico.findOne({
-            where: { id_usuario: req.usuario.id_usuario },
+        const tecnico = await obtenerTecnico(req.usuario.id_usuario);
+
+        // Cargar ciudad base
+        await tecnico.reload({
             include: [
                 {
                     model: Ciudad,
@@ -275,10 +270,6 @@ export const obtenerMisCiudades = async (req, res) => {
                 }
             ]
         });
-
-        if (!tecnico) {
-            throw new NotFoundError('No se encontró el perfil de técnico');
-        }
 
         // Obtener ciudades adicionales de operación
         const ciudadesAdicionales = await CiudadTecnico.findAll({
@@ -353,13 +344,7 @@ export const eliminarCiudadOperacion = async (req, res) => {
 
         const { id } = req.params;
 
-        const tecnico = await Tecnico.findOne({
-            where: { id_usuario: req.usuario.id_usuario }
-        });
-
-        if (!tecnico) {
-            throw new NotFoundError('No se encontró el perfil de técnico');
-        }
+        const tecnico = await obtenerTecnico(req.usuario.id_usuario);
 
         // Buscar la ciudad de operación (validando ownership)
         const ciudadTecnico = await CiudadTecnico.findOne({

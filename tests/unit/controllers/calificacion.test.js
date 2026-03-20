@@ -288,6 +288,7 @@ describe('calificacionController', () => {
       mockModels.Tecnico.findOne.mockResolvedValue({
         id_tecnico: 3,
         prom_calificacion: 4.5,
+        reload: jest.fn().mockResolvedValue(undefined),
       });
 
       mockModels.Calificacion.findOne.mockResolvedValue({

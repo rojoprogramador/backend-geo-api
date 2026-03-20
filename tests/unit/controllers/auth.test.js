@@ -143,7 +143,7 @@ describe('authController', () => {
           {
             model: Tecnico,
             as: 'perfil_tecnico',
-            attributes: ['estado_validacion'],
+            attributes: ['estado_validacion', 'disponible_inmediato', 'radio_cobertura_km'],
             required: false,
           },
         ],

@@ -20,8 +20,10 @@ const storage = multer.diskStorage({
     filename: function (req, file, cb) {
         // Generar nombre único: tecnico-{id_usuario}-{timestamp}.{extension}
         const uniqueSuffix = Date.now();
-        const ext = path.extname(file.originalname);
-        const filename = `tecnico-${req.usuario.id_usuario}-${uniqueSuffix}${ext}`;
+        const allowedExtensions = ['.jpg', '.jpeg', '.png'];
+        const ext = path.extname(file.originalname).toLowerCase();
+        const safeExt = allowedExtensions.includes(ext) ? ext : '.jpg';
+        const filename = `tecnico-${req.usuario.id_usuario}-${uniqueSuffix}${safeExt}`;
         cb(null, filename);
     }
 });

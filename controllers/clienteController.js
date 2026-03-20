@@ -3,30 +3,8 @@ import { sequelize, Usuario, Cliente, Rol, TipoDoc, Ciudad } from '../models/ind
 import { handleError } from '../utils/errorHandler.js';
 import { ValidationError, ConflictError, NotFoundError, ForbiddenError } from '../utils/errors/AppError.js';
 import logger from '../utils/logger.js';
-
-// ---------------------------------------------------------------------------
-// Expresiones regulares de validación (HU-01)
-// ---------------------------------------------------------------------------
-const REGEX_NOMBRE    = /^[a-zA-ZÀ-ÿ\u00f1\u00d1\s]{5,100}$/;
-const REGEX_DOCUMENTO = /^\d{6,12}$/;
-const REGEX_CORREO    = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const REGEX_TELEFONO  = /^3\d{9}$/;          // 10 dígitos que empiezan con 3
-const REGEX_FECHA     = /^\d{4}-\d{2}-\d{2}$/;
-
-/**
- * Valida la fortaleza de la contraseña:
- * mínimo 8 caracteres, 1 mayúscula, 1 minúscula, 1 número y 1 carácter especial.
- * @param {string} password
- * @returns {boolean}
- */
-const esContrasenaFuerte = (password) => {
-    if (!password || password.length < 8) return false;
-    const tieneUpper   = /[A-Z]/.test(password);
-    const tieneLower   = /[a-z]/.test(password);
-    const tieneNumero  = /[0-9]/.test(password);
-    const tieneEsp     = /[^A-Za-z0-9]/.test(password);
-    return tieneUpper && tieneLower && tieneNumero && tieneEsp;
-};
+import { REGEX_NOMBRE, REGEX_DOCUMENTO, REGEX_CORREO, REGEX_TELEFONO, REGEX_FECHA, esContrasenaFuerte } from '../utils/validators.js';
+import { obtenerCliente } from '../utils/profileHelpers.js';
 
 // ---------------------------------------------------------------------------
 
@@ -685,15 +663,7 @@ export const actualizarPerfilCliente = async (req, res) => {
         // ----------------------------------------------------------------
         // 5. Verificar que el Cliente existe
         // ----------------------------------------------------------------
-        const cliente = await Cliente.findOne({
-            where: { id_usuario: req.usuario.id_usuario },
-            transaction: t,
-        });
-
-        if (!cliente) {
-            await t.rollback();
-            throw new NotFoundError('No se encontró el perfil de cliente asociado a este usuario');
-        }
+        await obtenerCliente(req.usuario.id_usuario, t);
 
         // ----------------------------------------------------------------
         // 6. Si se está cambiando el correo, verificar que no esté en uso

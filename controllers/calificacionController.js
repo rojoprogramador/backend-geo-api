@@ -16,6 +16,7 @@ import {
     ForbiddenError,
     ConflictError,
 } from '../utils/errors/AppError.js';
+import { obtenerCliente, obtenerTecnico } from '../utils/profileHelpers.js';
 import logger from '../utils/logger.js';
 
 // ---------------------------------------------------------------------------
@@ -170,15 +171,7 @@ export const crearCalificacion = async (req, res) => {
         // ----------------------------------------------------------------
         // 4. Obtener el perfil de Cliente del usuario autenticado
         // ----------------------------------------------------------------
-        const cliente = await Cliente.findOne({
-            where: { id_usuario: req.usuario.id_usuario },
-            transaction: t,
-        });
-
-        if (!cliente) {
-            await t.rollback();
-            throw new NotFoundError('No se encontró el perfil de cliente asociado a este usuario');
-        }
+        const cliente = await obtenerCliente(req.usuario.id_usuario, t);
 
         // ----------------------------------------------------------------
         // 5. Verificar que el servicio existe y está en estado COMPLETADA (6)
@@ -558,14 +551,10 @@ export const obtenerMiCalificacionComoTecnico = async (req, res) => {
         // ----------------------------------------------------------------
         // 1. Obtener el perfil de Técnico del usuario autenticado
         // ----------------------------------------------------------------
-        const tecnico = await Tecnico.findOne({
-            where: { id_usuario: req.usuario.id_usuario },
-            attributes: ['id_tecnico', 'prom_calificacion'],
-        });
+        const tecnico = await obtenerTecnico(req.usuario.id_usuario);
 
-        if (!tecnico) {
-            throw new NotFoundError('No se encontró el perfil de técnico asociado a este usuario');
-        }
+        // Recargar con solo los atributos necesarios
+        await tecnico.reload({ attributes: ['id_tecnico', 'prom_calificacion'] });
 
         // ----------------------------------------------------------------
         // 2. Obtener total de calificaciones y promedio actualizado desde BD
@@ -727,24 +716,18 @@ export const obtenerCalificacionServicio = async (req, res) => {
         if (rol !== 'ADMIN') {
             if (rol === 'CLIENTE') {
                 // Verificar que el cliente autenticado es el dueño del servicio
-                const cliente = await Cliente.findOne({
-                    where: { id_usuario },
-                    attributes: ['id_cliente'],
-                });
+                const cliente = await obtenerCliente(id_usuario);
 
-                if (!cliente || cliente.id_cliente !== servicio.id_cliente) {
+                if (cliente.id_cliente !== servicio.id_cliente) {
                     throw new ForbiddenError(
                         'No tienes permiso para ver la calificación de este servicio'
                     );
                 }
             } else if (rol === 'TECNICO') {
                 // Verificar que el técnico autenticado realizó este servicio
-                const tecnico = await Tecnico.findOne({
-                    where: { id_usuario },
-                    attributes: ['id_tecnico'],
-                });
+                const tecnico = await obtenerTecnico(id_usuario);
 
-                if (!tecnico || tecnico.id_tecnico !== servicio.id_tecnico) {
+                if (tecnico.id_tecnico !== servicio.id_tecnico) {
                     throw new ForbiddenError(
                         'No tienes permiso para ver la calificación de este servicio'
                     );
