@@ -42,7 +42,7 @@ export const verifyToken = (req, res, next) => {
         return res.status(401).json({ message: 'Token inválido o expirado' }); 
     }
 }
-// Nueva función: Recibe una lista de roles permitidos (ej: 'Administrador', 'Técnico')
+// Nueva función: Recibe una lista de roles permitidos (ej: 'Administrador', 'admin2')
 export const permitirRoles = (...rolesPermitidos) =>{
     return (req, res, next) => {
         //req.usuario.rol viene del middleware verifyToken que se ejecuta antes y req.usuario se llena ahí
@@ -50,7 +50,7 @@ export const permitirRoles = (...rolesPermitidos) =>{
         if (!req.usuario || !req.usuario.rol) {
             return res.status(500).json({ message: 'Error: No se encontró el rol del usuario en la petición' });
         }
-
+        
         // Verificar si el rol del usuario está en la lista de roles permitidos
         if (!rolesPermitidos.includes(req.usuario.rol)) {
             return res.status(403).json({ message: 'Acceso denegado: No tienes permiso para realizar esta acción' });

@@ -3,6 +3,7 @@ node_modules/
 
 # Variables de entorno
 .env
+.env.*
 .env.local
 .env.*.local
 
@@ -42,3 +43,6 @@ coverage/
 # Temporales
 *.tmp
 *.temp
+
+# Uploads de usuarios
+uploads/

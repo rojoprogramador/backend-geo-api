@@ -8,7 +8,7 @@ const router = express.Router();
 // Ruta para obtener todos los usuarios
 //PROTEGEMOS ESTA RUTA CON EL MIDDLEWARE verifyToken
 // Se lee: "Verifica token Y LUEGO verifica que sea Administrador"
-router.get('/', verifyToken, permitirRoles('Administrador'), getUsuarios);
+router.get('/', verifyToken, permitirRoles('ADMIN'), getUsuarios);
 
 // Ruta para crear un nuevo usuario (POST /)
 // La creación de usuarios la dejamos pública OSEA SIN verifyToken por ahora (para poder registrarse

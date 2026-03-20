@@ -1,0 +1,766 @@
+import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { createReqMock, createResMock } from '../../mocks/models.js';
+
+// --- Inline Mocks ---
+const mockModels = {
+  sequelize: { transaction: jest.fn() },
+  Usuario: { findOne: jest.fn(), create: jest.fn(), findByPk: jest.fn(), update: jest.fn() },
+  Tecnico: { findOne: jest.fn(), findByPk: jest.fn(), create: jest.fn(), update: jest.fn(), findAndCountAll: jest.fn() },
+  Cliente: { findOne: jest.fn(), create: jest.fn() },
+  Rol: { findOne: jest.fn() },
+  TipoDoc: { findByPk: jest.fn() },
+  Ciudad: { findByPk: jest.fn() },
+  CertificadoTecnico: {},
+  Categoria: {},
+  Subcategoria: {},
+  Especialidad: {},
+};
+
+const mockTransaction = {
+  commit: jest.fn(),
+  rollback: jest.fn(),
+  finished: undefined,
+};
+
+const mockHandleError = jest.fn((res, error) => {
+  const sc = error.statusCode || 500;
+  return res.status(sc).json({
+    success: false,
+    message: error.message,
+    ...(error.errors && { errors: error.errors }),
+  });
+});
+
+const mockBcrypt = { hash: jest.fn() };
+
+const mockLogger = { info: jest.fn(), error: jest.fn(), warn: jest.fn() };
+
+jest.unstable_mockModule('../../../models/index.js', () => mockModels);
+jest.unstable_mockModule('../../../utils/errorHandler.js', () => ({ handleError: mockHandleError }));
+jest.unstable_mockModule('../../../utils/logger.js', () => ({ default: mockLogger }));
+jest.unstable_mockModule('bcrypt', () => ({ default: mockBcrypt }));
+
+const { ValidationError, NotFoundError, ForbiddenError, ConflictError } =
+  await import('../../../utils/errors/AppError.js');
+
+const {
+  registrarTecnico,
+  obtenerPerfilTecnico,
+  actualizarPerfilTecnico,
+  obtenerTecnicosPendientes,
+  obtenerDetalleTecnico,
+  aprobarTecnico,
+  rechazarTecnico,
+  obtenerTodosTecnicos,
+} = await import('../../../controllers/tecnicoController.js');
+
+// -----------------------------------------------------------------------
+
+describe('tecnicoController', () => {
+  let req, res;
+
+  const VALID_BODY = {
+    nombre: 'Andres Felipe',
+    apellido: 'Martinez Herrera',
+    correo_electronico: 'andres@example.com',
+    telefono: '3156789012',
+    contrasena: 'Tecnico123!',
+    confirmar_contrasena: 'Tecnico123!',
+    num_identificacion: '1061234567',
+    id_tipoDoc: 1,
+    fecha_nacimiento: '1990-06-15',
+    acepta_terminos: true,
+    id_ciudad: 1,
+  };
+
+  beforeEach(() => {
+    req = createReqMock();
+    res = createResMock();
+    jest.clearAllMocks();
+    mockModels.sequelize.transaction.mockResolvedValue(mockTransaction);
+    mockTransaction.finished = undefined;
+  });
+
+  // =====================================================================
+  // registrarTecnico
+  // =====================================================================
+  describe('registrarTecnico', () => {
+    const setupSuccessMocks = () => {
+      mockModels.TipoDoc.findByPk.mockResolvedValue({ id_tipoDoc: 1 });
+      mockModels.Usuario.findOne.mockResolvedValue(null); // no duplicates
+      mockModels.Ciudad.findByPk.mockResolvedValue({ id_ciudad: 1, nombre_ciudad: 'Cali' });
+      mockModels.Rol.findOne.mockResolvedValue({ id_rol: 3, descripcion: 'TECNICO' });
+      mockBcrypt.hash.mockResolvedValue('hashed_password');
+      mockModels.Usuario.create.mockResolvedValue({ id_usuario: 10, nombre: 'Andres Felipe', apellido: 'Martinez Herrera', correo_electronico: 'andres@example.com', telefono: '3156789012' });
+      mockModels.Tecnico.create.mockResolvedValue({ id_tecnico: 5, id_usuario: 10, estado_validacion: 'PENDIENTE_VALIDACION' });
+    };
+
+    it('debe registrar técnico exitosamente → 201', async () => {
+      req.body = { ...VALID_BODY };
+      setupSuccessMocks();
+
+      await registrarTecnico(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(res.jsonData.success).toBe(true);
+      expect(res.jsonData.data.estado_validacion).toBe('PENDIENTE_VALIDACION');
+      expect(mockTransaction.commit).toHaveBeenCalled();
+    });
+
+    it('debe retornar 400 cuando faltan campos requeridos', async () => {
+      req.body = { nombre: 'Andres Felipe' }; // missing many fields
+
+      await registrarTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+      expect(mockTransaction.rollback).toHaveBeenCalled();
+    });
+
+    it('debe retornar 400 con formato de nombre inválido', async () => {
+      req.body = { ...VALID_BODY, nombre: 'AB' }; // < 5 chars
+
+      await registrarTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+    });
+
+    it('debe retornar 400 con formato de correo inválido', async () => {
+      req.body = { ...VALID_BODY, correo_electronico: 'not-an-email' };
+
+      await registrarTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+    });
+
+    it('debe retornar 400 con teléfono inválido', async () => {
+      req.body = { ...VALID_BODY, telefono: '1234567890' }; // doesn't start with 3
+
+      await registrarTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+    });
+
+    it('debe retornar 400 con contraseña débil', async () => {
+      req.body = { ...VALID_BODY, contrasena: 'weak', confirmar_contrasena: 'weak' };
+
+      await registrarTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+    });
+
+    it('debe retornar 400 cuando contraseñas no coinciden', async () => {
+      req.body = { ...VALID_BODY, confirmar_contrasena: 'OtraClave123!' };
+
+      await registrarTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+    });
+
+    it('debe retornar 400 si términos no aceptados', async () => {
+      req.body = { ...VALID_BODY, acepta_terminos: false };
+
+      await registrarTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+    });
+
+    it('debe retornar 400 si TipoDoc no existe', async () => {
+      req.body = { ...VALID_BODY };
+      mockModels.TipoDoc.findByPk.mockResolvedValue(null);
+
+      await registrarTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+    });
+
+    it('debe retornar 409 si correo ya existe', async () => {
+      req.body = { ...VALID_BODY };
+      mockModels.TipoDoc.findByPk.mockResolvedValue({ id_tipoDoc: 1 });
+      mockModels.Usuario.findOne.mockResolvedValueOnce({ id_usuario: 99 }); // email duplicate
+
+      await registrarTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ConflictError);
+    });
+
+    it('debe retornar 409 si documento ya existe', async () => {
+      req.body = { ...VALID_BODY };
+      mockModels.TipoDoc.findByPk.mockResolvedValue({ id_tipoDoc: 1 });
+      mockModels.Usuario.findOne
+        .mockResolvedValueOnce(null)   // email ok
+        .mockResolvedValueOnce({ id_usuario: 88 }); // doc duplicate
+
+      await registrarTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ConflictError);
+    });
+
+    it('debe retornar 404 si ciudad no existe', async () => {
+      req.body = { ...VALID_BODY };
+      mockModels.TipoDoc.findByPk.mockResolvedValue({ id_tipoDoc: 1 });
+      mockModels.Usuario.findOne.mockResolvedValue(null);
+      mockModels.Ciudad.findByPk.mockResolvedValue(null);
+
+      await registrarTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(NotFoundError);
+    });
+
+    it('debe retornar 500 si rol TECNICO no existe', async () => {
+      req.body = { ...VALID_BODY };
+      mockModels.TipoDoc.findByPk.mockResolvedValue({ id_tipoDoc: 1 });
+      mockModels.Usuario.findOne.mockResolvedValue(null);
+      mockModels.Ciudad.findByPk.mockResolvedValue({ id_ciudad: 1 });
+      mockModels.Rol.findOne.mockResolvedValue(null);
+
+      await registrarTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err.statusCode).toBeUndefined(); // generic Error, not AppError
+    });
+
+    it('debe soportar campo contraseña con tilde (ñ)', async () => {
+      req.body = {
+        ...VALID_BODY,
+        contrasena: undefined,
+        confirmar_contrasena: undefined,
+        'contraseña': 'Tecnico123!',
+        'confirmar_contraseña': 'Tecnico123!',
+      };
+      setupSuccessMocks();
+
+      await registrarTecnico(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(201);
+    });
+  });
+
+  // =====================================================================
+  // obtenerPerfilTecnico
+  // =====================================================================
+  describe('obtenerPerfilTecnico', () => {
+    it('debe retornar perfil exitosamente → 200', async () => {
+      req.usuario = { id_usuario: 10, rol: 'TECNICO' };
+      mockModels.Tecnico.findOne.mockResolvedValue({
+        id_tecnico: 5,
+        estado_validacion: 'ACTIVO',
+        prom_calificacion: 4.5,
+        disponible_inmediato: true,
+        datos_usuario: {
+          id_usuario: 10,
+          nombre: 'Andres',
+          apellido: 'Martinez',
+          correo_electronico: 'a@b.com',
+          telefono: '3156789012',
+          num_identificacion: '1061234567',
+          fecha_nacimiento: '1990-06-15',
+          TipoDoc: { descripcion: 'CC' },
+        },
+        Ciudad: { nombre_ciudad: 'Cali' },
+      });
+
+      await obtenerPerfilTecnico(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.jsonData.data.estado_validacion).toBe('ACTIVO');
+      expect(res.jsonData.data.ciudad_base).toBe('Cali');
+    });
+
+    it('debe retornar 403 si no es TECNICO', async () => {
+      req.usuario = { id_usuario: 10, rol: 'CLIENTE' };
+
+      await obtenerPerfilTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ForbiddenError);
+    });
+
+    it('debe retornar 404 si perfil no encontrado', async () => {
+      req.usuario = { id_usuario: 10, rol: 'TECNICO' };
+      mockModels.Tecnico.findOne.mockResolvedValue(null);
+
+      await obtenerPerfilTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(NotFoundError);
+    });
+  });
+
+  // =====================================================================
+  // actualizarPerfilTecnico
+  // =====================================================================
+  describe('actualizarPerfilTecnico', () => {
+    it('debe actualizar teléfono → 200', async () => {
+      req.usuario = { id_usuario: 10, rol: 'TECNICO' };
+      req.body = { telefono: '3001112233' };
+      mockModels.Tecnico.findOne
+        .mockResolvedValueOnce({ id_tecnico: 5 })        // check exists
+        .mockResolvedValueOnce({ Ciudad: { nombre_ciudad: 'Cali' } }); // for response
+      mockModels.Usuario.findByPk.mockResolvedValue({
+        id_usuario: 10, correo_electronico: 'a@b.com', telefono: '3001112233',
+      });
+
+      await actualizarPerfilTecnico(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(mockTransaction.commit).toHaveBeenCalled();
+    });
+
+    it('debe actualizar ciudad → 200', async () => {
+      req.usuario = { id_usuario: 10, rol: 'TECNICO' };
+      req.body = { id_ciudad: 2 };
+      mockModels.Tecnico.findOne
+        .mockResolvedValueOnce({ id_tecnico: 5 })
+        .mockResolvedValueOnce({ Ciudad: { nombre_ciudad: 'Medellín' }, disponible_inmediato: true });
+      mockModels.Ciudad.findByPk.mockResolvedValue({ id_ciudad: 2, nombre_ciudad: 'Medellín' });
+      mockModels.Usuario.findByPk.mockResolvedValue({
+        id_usuario: 10, correo_electronico: 'a@b.com', telefono: '3001112233',
+      });
+
+      await actualizarPerfilTecnico(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(mockModels.Tecnico.update).toHaveBeenCalled();
+    });
+
+    it('debe retornar 400 si no envía campos', async () => {
+      req.usuario = { id_usuario: 10, rol: 'TECNICO' };
+      req.body = {};
+
+      await actualizarPerfilTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+    });
+
+    it('debe retornar 400 con teléfono inválido', async () => {
+      req.usuario = { id_usuario: 10, rol: 'TECNICO' };
+      req.body = { telefono: '123' };
+
+      await actualizarPerfilTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+    });
+
+    it('debe retornar 409 con correo duplicado', async () => {
+      req.usuario = { id_usuario: 10, rol: 'TECNICO' };
+      req.body = { correo_electronico: 'otro@example.com' };
+      mockModels.Tecnico.findOne.mockResolvedValueOnce({ id_tecnico: 5 });
+      mockModels.Usuario.findOne.mockResolvedValue({ id_usuario: 99 }); // other user
+
+      await actualizarPerfilTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ConflictError);
+    });
+
+    it('debe retornar 404 si ciudad no existe', async () => {
+      req.usuario = { id_usuario: 10, rol: 'TECNICO' };
+      req.body = { id_ciudad: 999 };
+      mockModels.Tecnico.findOne.mockResolvedValueOnce({ id_tecnico: 5 });
+      mockModels.Ciudad.findByPk.mockResolvedValue(null);
+
+      await actualizarPerfilTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(NotFoundError);
+    });
+
+    it('debe retornar 403 si no es TECNICO', async () => {
+      req.usuario = { id_usuario: 10, rol: 'CLIENTE' };
+      req.body = { telefono: '3001112233' };
+
+      await actualizarPerfilTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ForbiddenError);
+    });
+
+    it('debe actualizar disponible_inmediato solo → 200 (toggle jornada)', async () => {
+      req.usuario = { id_usuario: 10, rol: 'TECNICO' };
+      req.body = { disponible_inmediato: false };
+      mockModels.Tecnico.findOne
+        .mockResolvedValueOnce({ id_tecnico: 5 })
+        .mockResolvedValueOnce({ Ciudad: { nombre_ciudad: 'Cali' }, disponible_inmediato: false });
+      mockModels.Usuario.findByPk.mockResolvedValue({
+        id_usuario: 10, correo_electronico: 'a@b.com', telefono: '3001112233',
+      });
+
+      await actualizarPerfilTecnico(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(mockModels.Tecnico.update).toHaveBeenCalledWith(
+        { disponible_inmediato: false },
+        expect.objectContaining({ where: { id_tecnico: 5 } })
+      );
+      expect(res.jsonData.data.disponible_inmediato).toBe(false);
+    });
+
+    it('debe retornar 400 si disponible_inmediato no es boolean', async () => {
+      req.usuario = { id_usuario: 10, rol: 'TECNICO' };
+      req.body = { disponible_inmediato: 'si' };
+
+      await actualizarPerfilTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+      expect(err.errors[0]).toContain('true o false');
+    });
+  });
+
+  // =====================================================================
+  // obtenerTecnicosPendientes
+  // =====================================================================
+  describe('obtenerTecnicosPendientes', () => {
+    it('debe retornar lista paginada → 200', async () => {
+      req.usuario = { id_usuario: 1 };
+      req.query = {};
+      mockModels.Tecnico.findAndCountAll.mockResolvedValue({
+        count: 2,
+        rows: [
+          {
+            id_tecnico: 5,
+            estado_validacion: 'PENDIENTE_VALIDACION',
+            createdAt: new Date(),
+            datos_usuario: { id_usuario: 10, nombre: 'A', apellido: 'B', correo_electronico: 'a@b.com', telefono: '3001112233', num_identificacion: '123456' },
+            Ciudad: { nombre_ciudad: 'Cali' },
+          },
+        ],
+      });
+
+      await obtenerTecnicosPendientes(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.jsonData.total).toBe(2);
+    });
+
+    it('debe retornar 400 con page inválido', async () => {
+      req.usuario = { id_usuario: 1 };
+      req.query = { page: 'abc' };
+
+      await obtenerTecnicosPendientes(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+    });
+
+    it('debe retornar 400 con limit fuera de rango', async () => {
+      req.usuario = { id_usuario: 1 };
+      req.query = { limit: '200' };
+
+      await obtenerTecnicosPendientes(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+    });
+  });
+
+  // =====================================================================
+  // obtenerDetalleTecnico
+  // =====================================================================
+  describe('obtenerDetalleTecnico', () => {
+    it('debe retornar detalle completo → 200', async () => {
+      req.usuario = { id_usuario: 1 };
+      req.params = { id: '5' };
+      mockModels.Tecnico.findByPk.mockResolvedValue({
+        id_tecnico: 5,
+        estado_validacion: 'PENDIENTE_VALIDACION',
+        radio_cobertura_km: 10,
+        disponible_inmediato: true,
+        disponibilidad_horaria: null,
+        prom_calificacion: 0,
+        url_foto: null,
+        url_docId: null,
+        createdAt: new Date(),
+        fecha_validacion: null,
+        datos_usuario: {
+          id_usuario: 10, nombre: 'Andres', apellido: 'Martinez',
+          correo_electronico: 'a@b.com', telefono: '3156789012',
+          num_identificacion: '1061234567', fecha_nacimiento: '1990-06-15',
+        },
+        Ciudad: { nombre_ciudad: 'Cali' },
+        certificados: [],
+        especialidades: [],
+      });
+
+      await obtenerDetalleTecnico(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.jsonData.data.id_tecnico).toBe(5);
+    });
+
+    it('debe retornar 400 con id inválido', async () => {
+      req.usuario = { id_usuario: 1 };
+      req.params = { id: 'abc' };
+
+      await obtenerDetalleTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+    });
+
+    it('debe retornar 404 si no se encuentra', async () => {
+      req.usuario = { id_usuario: 1 };
+      req.params = { id: '999' };
+      mockModels.Tecnico.findByPk.mockResolvedValue(null);
+
+      await obtenerDetalleTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(NotFoundError);
+    });
+  });
+
+  // =====================================================================
+  // aprobarTecnico
+  // =====================================================================
+  describe('aprobarTecnico', () => {
+    it('debe aprobar técnico exitosamente → 200', async () => {
+      req.usuario = { id_usuario: 1 };
+      req.params = { id: '5' };
+      req.body = {};
+      mockModels.Tecnico.findByPk.mockResolvedValue({
+        id_tecnico: 5,
+        estado_validacion: 'PENDIENTE_VALIDACION',
+        datos_usuario: { id_usuario: 10, nombre: 'Andres', apellido: 'Martinez' },
+      });
+
+      await aprobarTecnico(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.jsonData.data.estado_validacion).toBe('ACTIVO');
+      expect(mockModels.Tecnico.update).toHaveBeenCalled();
+      expect(mockTransaction.commit).toHaveBeenCalled();
+    });
+
+    it('debe aprobar con notas_aprobacion → 200', async () => {
+      req.usuario = { id_usuario: 1 };
+      req.params = { id: '5' };
+      req.body = { notas_aprobacion: 'Documentación en regla.' };
+      mockModels.Tecnico.findByPk.mockResolvedValue({
+        id_tecnico: 5,
+        estado_validacion: 'PENDIENTE_VALIDACION',
+        datos_usuario: { id_usuario: 10, nombre: 'Andres', apellido: 'Martinez' },
+      });
+
+      await aprobarTecnico(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.jsonData.data.notas_aprobacion).toBe('Documentación en regla.');
+    });
+
+    it('debe retornar 400 con id inválido', async () => {
+      req.usuario = { id_usuario: 1 };
+      req.params = { id: '-1' };
+      req.body = {};
+
+      await aprobarTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+    });
+
+    it('debe retornar 404 si técnico no existe', async () => {
+      req.usuario = { id_usuario: 1 };
+      req.params = { id: '999' };
+      req.body = {};
+      mockModels.Tecnico.findByPk.mockResolvedValue(null);
+
+      await aprobarTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(NotFoundError);
+    });
+
+    it('debe retornar 409 si ya fue procesado', async () => {
+      req.usuario = { id_usuario: 1 };
+      req.params = { id: '5' };
+      req.body = {};
+      mockModels.Tecnico.findByPk.mockResolvedValue({
+        id_tecnico: 5,
+        estado_validacion: 'ACTIVO',
+        datos_usuario: { id_usuario: 10, nombre: 'A', apellido: 'B' },
+      });
+
+      await aprobarTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ConflictError);
+    });
+
+    it('debe retornar 400 si notas_aprobacion supera 300 caracteres', async () => {
+      req.usuario = { id_usuario: 1 };
+      req.params = { id: '5' };
+      req.body = { notas_aprobacion: 'x'.repeat(301) };
+
+      await aprobarTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+    });
+  });
+
+  // =====================================================================
+  // rechazarTecnico
+  // =====================================================================
+  describe('rechazarTecnico', () => {
+    const MOTIVO_VALIDO = 'La documentación presentada está incompleta. Falta el certificado de experiencia laboral actualizado.';
+
+    it('debe rechazar técnico exitosamente → 200', async () => {
+      req.usuario = { id_usuario: 1 };
+      req.params = { id: '5' };
+      req.body = { motivo_rechazo: MOTIVO_VALIDO };
+      mockModels.Tecnico.findByPk.mockResolvedValue({
+        id_tecnico: 5,
+        estado_validacion: 'PENDIENTE_VALIDACION',
+        datos_usuario: { id_usuario: 10, nombre: 'Andres', apellido: 'Martinez' },
+      });
+
+      await rechazarTecnico(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.jsonData.data.estado_validacion).toBe('RECHAZADO');
+      expect(res.jsonData.data.motivo_rechazo).toBe(MOTIVO_VALIDO);
+      expect(mockTransaction.commit).toHaveBeenCalled();
+    });
+
+    it('debe retornar 400 si falta motivo_rechazo', async () => {
+      req.usuario = { id_usuario: 1 };
+      req.params = { id: '5' };
+      req.body = {};
+
+      await rechazarTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+    });
+
+    it('debe retornar 400 si motivo es menor a 50 caracteres', async () => {
+      req.usuario = { id_usuario: 1 };
+      req.params = { id: '5' };
+      req.body = { motivo_rechazo: 'Muy corto' };
+
+      await rechazarTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+    });
+
+    it('debe retornar 400 con id inválido', async () => {
+      req.usuario = { id_usuario: 1 };
+      req.params = { id: '0' };
+      req.body = { motivo_rechazo: MOTIVO_VALIDO };
+
+      await rechazarTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+    });
+
+    it('debe retornar 404 si técnico no existe', async () => {
+      req.usuario = { id_usuario: 1 };
+      req.params = { id: '999' };
+      req.body = { motivo_rechazo: MOTIVO_VALIDO };
+      mockModels.Tecnico.findByPk.mockResolvedValue(null);
+
+      await rechazarTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(NotFoundError);
+    });
+
+    it('debe retornar 409 si ya fue procesado', async () => {
+      req.usuario = { id_usuario: 1 };
+      req.params = { id: '5' };
+      req.body = { motivo_rechazo: MOTIVO_VALIDO };
+      mockModels.Tecnico.findByPk.mockResolvedValue({
+        id_tecnico: 5,
+        estado_validacion: 'RECHAZADO',
+        datos_usuario: { id_usuario: 10, nombre: 'A', apellido: 'B' },
+      });
+
+      await rechazarTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ConflictError);
+    });
+
+    it('debe retornar 400 si motivo supera 1000 caracteres', async () => {
+      req.usuario = { id_usuario: 1 };
+      req.params = { id: '5' };
+      req.body = { motivo_rechazo: 'x'.repeat(1001) };
+
+      await rechazarTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+    });
+  });
+
+  // =====================================================================
+  // obtenerTodosTecnicos
+  // =====================================================================
+  describe('obtenerTodosTecnicos', () => {
+    it('debe retornar todos los técnicos sin filtro → 200', async () => {
+      req.usuario = { id_usuario: 1 };
+      req.query = {};
+      mockModels.Tecnico.findAndCountAll.mockResolvedValue({
+        count: 3,
+        rows: [
+          {
+            id_tecnico: 1, estado_validacion: 'ACTIVO', createdAt: new Date(),
+            datos_usuario: { id_usuario: 10, nombre: 'A', apellido: 'B', correo_electronico: 'a@b.com', telefono: '3001112233', num_identificacion: '123456' },
+            Ciudad: { nombre_ciudad: 'Cali' },
+          },
+        ],
+      });
+
+      await obtenerTodosTecnicos(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.jsonData.total).toBe(3);
+    });
+
+    it('debe filtrar por estado válido → 200', async () => {
+      req.usuario = { id_usuario: 1 };
+      req.query = { estado: 'ACTIVO' };
+      mockModels.Tecnico.findAndCountAll.mockResolvedValue({ count: 1, rows: [] });
+
+      await obtenerTodosTecnicos(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    it('debe retornar 400 con estado inválido', async () => {
+      req.usuario = { id_usuario: 1 };
+      req.query = { estado: 'INVALIDO' };
+
+      await obtenerTodosTecnicos(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+    });
+
+    it('debe retornar 400 con paginación inválida', async () => {
+      req.usuario = { id_usuario: 1 };
+      req.query = { page: '0' };
+
+      await obtenerTodosTecnicos(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+    });
+  });
+});

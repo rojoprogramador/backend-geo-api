@@ -36,14 +36,14 @@ const Tecnico = sequelize.define('Tecnico', {
     },
     disponible_inmediato: {
         type: DataTypes.BOOLEAN,
-        defaultValue: true
+        defaultValue: false
     },
     prom_calificacion: {
         type: DataTypes.FLOAT,
         defaultValue: 0.0
     },
     estado_validacion: {
-        type: DataTypes.ENUM('PENDIENTE_VALIDACION', 'ACTIVO', 'SUSPENDIDO', 'RECHAZADO'),
+        type: DataTypes.ENUM('PENDIENTE_VALIDACION', 'ACTIVO', 'SUSPENDIDO', 'RECHAZADO', 'INACTIVO'),
         allowNull: false,
         defaultValue: 'PENDIENTE_VALIDACION'
     },

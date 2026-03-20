@@ -45,6 +45,10 @@ const Usuario = sequelize.define('Usuario',{
         allowNull: false,
         unique: true,
     },
+    id_ciudad:{
+        type: DataTypes.INTEGER,
+        allowNull: true,
+    },
 },{
     tableName: 'Usuario',
 });
