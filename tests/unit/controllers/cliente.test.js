@@ -404,8 +404,13 @@ describe('clienteController', () => {
           telefono: '3101234567',
           num_identificacion: '1098765432',
           fecha_nacimiento: '1995-03-20',
+          id_ciudad: 1,
           TipoDoc: {
             descripcion: 'CC',
+          },
+          Ciudad: {
+            id_ciudad: 1,
+            nombre_ciudad: 'Cali',
           },
         },
       };
@@ -420,6 +425,36 @@ describe('clienteController', () => {
       expect(res.jsonData.data.id_cliente).toBe(8);
       expect(res.jsonData.data.nombre).toBe('María Alejandra');
       expect(res.jsonData.data.tipo_documento).toBe('CC');
+      expect(res.jsonData.data.id_ciudad).toBe(1);
+      expect(res.jsonData.data.ciudad).toBe('Cali');
+    });
+
+    it('1b. Success without ciudad → null values', async () => {
+      req.usuario = { id_usuario: 12, rol: 'CLIENTE' };
+
+      const mockCliente = {
+        id_cliente: 8,
+        datos_usuario: {
+          id_usuario: 12,
+          nombre: 'Test',
+          apellido: 'User',
+          correo_electronico: 'test@example.com',
+          telefono: '3101234567',
+          num_identificacion: '1098765432',
+          fecha_nacimiento: '1995-03-20',
+          id_ciudad: null,
+          TipoDoc: null,
+          Ciudad: null,
+        },
+      };
+
+      mockModels.Cliente.findOne.mockResolvedValue(mockCliente);
+
+      await obtenerPerfilCliente(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.jsonData.data.id_ciudad).toBeNull();
+      expect(res.jsonData.data.ciudad).toBeNull();
     });
 
     it('2. Not CLIENTE role → 403 ForbiddenError', async () => {
@@ -503,7 +538,7 @@ describe('clienteController', () => {
       expect(mockTransaction.rollback).toHaveBeenCalled();
       const errorArg = mockHandleError.mock.calls[0][1];
       expect(errorArg).toBeInstanceOf(ValidationError);
-      expect(errorArg.errors).toContain('Debe enviar al menos un campo para actualizar: telefono o correo_electronico');
+      expect(errorArg.errors).toContain('Debe enviar al menos un campo para actualizar: telefono, correo_electronico o id_ciudad');
     });
 
     it('4. Invalid phone format → 400', async () => {
@@ -615,7 +650,60 @@ describe('clienteController', () => {
       expect(res.status).toHaveBeenCalledWith(200);
     });
 
-    it('10. Invalid email format → 400', async () => {
+    it('10. Update id_ciudad success → 200', async () => {
+      req.usuario = { id_usuario: 12, rol: 'CLIENTE' };
+      req.body = { id_ciudad: 2 };
+
+      mockModels.Cliente.findOne.mockResolvedValue({ id_cliente: 8, id_usuario: 12 });
+      mockModels.Ciudad.findByPk.mockResolvedValue({ id_ciudad: 2, nombre_ciudad: 'Bogotá' });
+      mockModels.Usuario.findByPk.mockResolvedValue({
+        id_usuario: 12,
+        correo_electronico: 'maria@example.com',
+        telefono: '3101234567',
+        id_ciudad: 2,
+        Ciudad: { id_ciudad: 2, nombre_ciudad: 'Bogotá' },
+      });
+
+      await actualizarPerfilCliente(req, res);
+
+      expect(mockTransaction.commit).toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.jsonData.data.id_ciudad).toBe(2);
+      expect(res.jsonData.data.ciudad).toBe('Bogotá');
+      expect(mockModels.Usuario.update).toHaveBeenCalledWith(
+        expect.objectContaining({ id_ciudad: 2 }),
+        expect.objectContaining({ where: { id_usuario: 12 } })
+      );
+    });
+
+    it('11. Invalid id_ciudad format → 400', async () => {
+      req.usuario = { id_usuario: 12, rol: 'CLIENTE' };
+      req.body = { id_ciudad: -1 };
+
+      await actualizarPerfilCliente(req, res);
+
+      expect(mockTransaction.rollback).toHaveBeenCalled();
+      const errorArg = mockHandleError.mock.calls[0][1];
+      expect(errorArg).toBeInstanceOf(ValidationError);
+      expect(errorArg.errors).toContain('El id_ciudad debe ser un entero positivo');
+    });
+
+    it('12. Ciudad not found → 404', async () => {
+      req.usuario = { id_usuario: 12, rol: 'CLIENTE' };
+      req.body = { id_ciudad: 999 };
+
+      mockModels.Cliente.findOne.mockResolvedValue({ id_cliente: 8, id_usuario: 12 });
+      mockModels.Ciudad.findByPk.mockResolvedValue(null);
+
+      await actualizarPerfilCliente(req, res);
+
+      expect(mockTransaction.rollback).toHaveBeenCalled();
+      const errorArg = mockHandleError.mock.calls[0][1];
+      expect(errorArg).toBeInstanceOf(NotFoundError);
+      expect(errorArg.message).toBe('No se encontró la ciudad con id 999');
+    });
+
+    it('13. Invalid email format → 400', async () => {
       req.usuario = { id_usuario: 12, rol: 'CLIENTE' };
       req.body = { correo_electronico: 'invalid-email' };
 

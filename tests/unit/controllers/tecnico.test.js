@@ -250,7 +250,7 @@ describe('tecnicoController', () => {
   // obtenerPerfilTecnico
   // =====================================================================
   describe('obtenerPerfilTecnico', () => {
-    it('debe retornar perfil exitosamente → 200', async () => {
+    it('debe retornar perfil exitosamente con ciudades_operacion → 200', async () => {
       req.usuario = { id_usuario: 10, rol: 'TECNICO' };
       mockModels.Tecnico.findOne.mockResolvedValue({
         id_tecnico: 5,
@@ -267,14 +267,24 @@ describe('tecnicoController', () => {
           fecha_nacimiento: '1990-06-15',
           TipoDoc: { descripcion: 'CC' },
         },
-        Ciudad: { nombre_ciudad: 'Cali' },
+        Ciudad: { id_ciudad: 1, nombre_ciudad: 'Cali' },
+        ciudades_operacion: [
+          { id_ciudad: 3, nombre_ciudad: 'Palmira' },
+          { id_ciudad: 5, nombre_ciudad: 'Jamundí' },
+        ],
       });
 
       await obtenerPerfilTecnico(req, res);
 
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.jsonData.data.estado_validacion).toBe('ACTIVO');
+      expect(res.jsonData.data.id_ciudad).toBe(1);
       expect(res.jsonData.data.ciudad_base).toBe('Cali');
+      expect(res.jsonData.data.ciudades_operacion).toHaveLength(2);
+      expect(res.jsonData.data.ciudades_operacion[0]).toEqual({
+        id_ciudad: 3,
+        nombre_ciudad: 'Palmira',
+      });
     });
 
     it('debe retornar 403 si no es TECNICO', async () => {
