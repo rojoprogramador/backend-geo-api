@@ -15,8 +15,7 @@ const Especialidad = sequelize.define('Especialidad', {
         type: DataTypes.INTEGER,
         allowNull: false
     },
-    experiencia: DataTypes.STRING,
-    precio_estimado: DataTypes.DECIMAL(10, 2)
+    experiencia: DataTypes.STRING
 }, {
     tableName: 'Especialidad',
     timestamps: true

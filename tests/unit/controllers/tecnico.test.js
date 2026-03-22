@@ -257,6 +257,7 @@ describe('tecnicoController', () => {
         estado_validacion: 'ACTIVO',
         prom_calificacion: 4.5,
         disponible_inmediato: true,
+        url_foto: '/uploads/fotos/tecnico_5_123.jpg',
         datos_usuario: {
           id_usuario: 10,
           nombre: 'Andres',
@@ -278,6 +279,7 @@ describe('tecnicoController', () => {
 
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.jsonData.data.estado_validacion).toBe('ACTIVO');
+      expect(res.jsonData.data.url_foto).toBe('/uploads/fotos/tecnico_5_123.jpg');
       expect(res.jsonData.data.id_ciudad).toBe(1);
       expect(res.jsonData.data.ciudad_base).toBe('Cali');
       expect(res.jsonData.data.ciudades_operacion).toHaveLength(2);
@@ -427,6 +429,76 @@ describe('tecnicoController', () => {
       const err = mockHandleError.mock.calls[0][1];
       expect(err).toBeInstanceOf(ValidationError);
       expect(err.errors[0]).toContain('true o false');
+    });
+
+    it('debe actualizar ubicacion_base con latitud/longitud → 200', async () => {
+      req.usuario = { id_usuario: 10, rol: 'TECNICO' };
+      req.body = { latitud: 3.4516, longitud: -76.5320 };
+      mockModels.Tecnico.findOne
+        .mockResolvedValueOnce({ id_tecnico: 5 })
+        .mockResolvedValueOnce({
+          Ciudad: { nombre_ciudad: 'Cali' },
+          disponible_inmediato: true,
+          radio_cobertura_km: 10,
+          ubicacion_base: { type: 'Point', coordinates: [-76.5320, 3.4516] },
+        });
+      mockModels.Usuario.findByPk.mockResolvedValue({
+        id_usuario: 10, correo_electronico: 'a@b.com', telefono: '3001112233',
+      });
+
+      await actualizarPerfilTecnico(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(mockModels.Tecnico.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ubicacion_base: { type: 'Point', coordinates: [-76.5320, 3.4516] },
+        }),
+        expect.objectContaining({ where: { id_tecnico: 5 } })
+      );
+      expect(res.jsonData.data.ubicacion_base).toEqual({ latitud: 3.4516, longitud: -76.5320 });
+    });
+
+    it('debe retornar 400 si envía latitud sin longitud', async () => {
+      req.usuario = { id_usuario: 10, rol: 'TECNICO' };
+      req.body = { latitud: 3.4516 };
+
+      await actualizarPerfilTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+      expect(err.errors[0]).toContain('juntos');
+    });
+
+    it('debe retornar 400 si latitud fuera de rango', async () => {
+      req.usuario = { id_usuario: 10, rol: 'TECNICO' };
+      req.body = { latitud: 95, longitud: -76.5320 };
+
+      await actualizarPerfilTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+      expect(err.errors[0]).toContain('latitud');
+    });
+
+    it('debe retornar ubicacion_base null si técnico no tiene GPS', async () => {
+      req.usuario = { id_usuario: 10, rol: 'TECNICO' };
+      req.body = { telefono: '3009998877' };
+      mockModels.Tecnico.findOne
+        .mockResolvedValueOnce({ id_tecnico: 5 })
+        .mockResolvedValueOnce({
+          Ciudad: { nombre_ciudad: 'Cali' },
+          disponible_inmediato: false,
+          radio_cobertura_km: 10,
+          ubicacion_base: null,
+        });
+      mockModels.Usuario.findByPk.mockResolvedValue({
+        id_usuario: 10, correo_electronico: 'a@b.com', telefono: '3009998877',
+      });
+
+      await actualizarPerfilTecnico(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.jsonData.data.ubicacion_base).toBeNull();
     });
   });
 

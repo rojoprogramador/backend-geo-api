@@ -269,6 +269,26 @@ export const crearCalificacion = async (req, res) => {
 
         await t.commit();
 
+        // ── WebSocket: notificar al técnico que recibió una calificación (best-effort) ──
+        try {
+            const { emitCalificacionRecibida } = await import('../sockets/services/socketEmitter.js');
+            const tecnicoCalificado = await Tecnico.findByPk(servicio.id_tecnico, { attributes: ['id_usuario'] });
+            if (tecnicoCalificado?.id_usuario) {
+                emitCalificacionRecibida({
+                    id_tecnico_usuario: tecnicoCalificado.id_usuario,
+                    calificacionData: {
+                        id_servicio:    Number(id_servicio),
+                        id_cliente:     cliente.id_cliente,
+                        puntuacion:     puntuacionNum,
+                        comentario:     comentario ? String(comentario).trim() : null,
+                        nuevo_promedio: parseFloat(nuevoPromedio),
+                    },
+                });
+            }
+        } catch (wsErr) {
+            logger.warn(`crearCalificacion: WebSocket emit falló (no-crítico): ${wsErr.message}`);
+        }
+
         // Cargar la calificación completa para la respuesta (fuera de transacción)
         const calificacionCompleta = await Calificacion.findByPk(
             nuevaCalificacion.id_calificacion,

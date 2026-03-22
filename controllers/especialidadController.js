@@ -6,7 +6,7 @@ import {
     Categoria,
 } from '../models/index.js';
 import { handleError } from '../utils/errorHandler.js';
-import { ValidationError, NotFoundError, ForbiddenError, ConflictError } from '../utils/errors/AppError.js';
+import { ValidationError, NotFoundError, ConflictError } from '../utils/errors/AppError.js';
 import logger from '../utils/logger.js';
 import { obtenerTecnico } from '../utils/profileHelpers.js';
 
@@ -23,7 +23,11 @@ import { obtenerTecnico } from '../utils/profileHelpers.js';
  *       **Campos:**
  *       - `id_subcategoria`: ID del servicio que domina (obligatorio)
  *       - `experiencia`: Descripción de su experiencia (opcional, ej: "5 años")
- *       - `precio_estimado`: Precio promedio que cobra (opcional)
+ *
+ *       **Batch:** Se puede enviar `{ especialidades: [{id_subcategoria, experiencia?}, ...] }`
+ *       para agregar múltiples especialidades en una sola petición.
+ *
+ *       **Legacy:** También acepta `{ id_subcategoria, experiencia }` para una sola.
  *     tags: [Tecnicos]
  *     security:
  *       - bearerAuth: []
@@ -32,20 +36,34 @@ import { obtenerTecnico } from '../utils/profileHelpers.js';
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             required:
- *               - id_subcategoria
- *             properties:
- *               id_subcategoria:
- *                 type: integer
- *                 example: 1
- *               experiencia:
- *                 type: string
- *                 example: "5 años de experiencia"
- *               precio_estimado:
- *                 type: number
- *                 format: decimal
- *                 example: 50000
+ *             oneOf:
+ *               - type: object
+ *                 required:
+ *                   - especialidades
+ *                 properties:
+ *                   especialidades:
+ *                     type: array
+ *                     items:
+ *                       type: object
+ *                       required:
+ *                         - id_subcategoria
+ *                       properties:
+ *                         id_subcategoria:
+ *                           type: integer
+ *                           example: 1
+ *                         experiencia:
+ *                           type: string
+ *                           example: "5 años de experiencia"
+ *               - type: object
+ *                 required:
+ *                   - id_subcategoria
+ *                 properties:
+ *                   id_subcategoria:
+ *                     type: integer
+ *                     example: 1
+ *                   experiencia:
+ *                     type: string
+ *                     example: "5 años de experiencia"
  *     responses:
  *       201:
  *         description: Especialidad agregada exitosamente
@@ -57,67 +75,113 @@ import { obtenerTecnico } from '../utils/profileHelpers.js';
  *         description: Ya tienes esta especialidad registrada
  */
 export const agregarEspecialidad = async (req, res) => {
+    const t = await sequelize.transaction();
+
     try {
-        // Verificar que el usuario autenticado tiene rol Tecnico
-        if (req.usuario.rol !== 'TECNICO') {
-            throw new ForbiddenError('Esta ruta es exclusiva para técnicos');
+        // ── Normalizar input: batch ó legacy single ──
+        let items;
+        if (Array.isArray(req.body.especialidades)) {
+            items = req.body.especialidades;
+        } else if (req.body.id_subcategoria) {
+            items = [{ id_subcategoria: req.body.id_subcategoria, experiencia: req.body.experiencia }];
+        } else {
+            await t.rollback();
+            throw new ValidationError('Debe enviar "especialidades" (array) o "id_subcategoria"');
         }
 
-        const { id_subcategoria, experiencia, precio_estimado } = req.body;
-
-        // Validar que id_subcategoria sea requerido
-        if (!id_subcategoria) {
-            throw new ValidationError('El campo id_subcategoria es requerido');
+        if (items.length === 0) {
+            await t.rollback();
+            throw new ValidationError('El array especialidades no puede estar vacío');
         }
 
-        // Buscar el tecnico autenticado
-        const tecnico = await obtenerTecnico(req.usuario.id_usuario);
-
-        // Verificar que la subcategoria existe y está activa
-        const subcategoria = await Subcategoria.findOne({
-            where: { id_subcategoria, activo: true },
-            include: [{ model: Categoria, attributes: ['nombre'] }]
-        });
-
-        if (!subcategoria) {
-            throw new NotFoundError('La subcategoría no existe o está inactiva');
-        }
-
-        // Verificar que el técnico no tenga ya esta especialidad
-        const especialidadExistente = await Especialidad.findOne({
-            where: {
-                id_tecnico: tecnico.id_tecnico,
-                id_subcategoria
+        // Validar estructura de cada item
+        const errores = [];
+        items.forEach((item, i) => {
+            if (!item.id_subcategoria || !Number.isInteger(Number(item.id_subcategoria)) || Number(item.id_subcategoria) <= 0) {
+                errores.push(`Elemento ${i}: id_subcategoria es requerido y debe ser un entero positivo`);
             }
         });
-
-        if (especialidadExistente) {
-            throw new ConflictError('Ya tienes esta especialidad registrada');
+        if (errores.length > 0) {
+            await t.rollback();
+            throw new ValidationError('Error de validación', errores);
         }
 
-        // Crear la especialidad
-        const nuevaEspecialidad = await Especialidad.create({
-            id_tecnico: tecnico.id_tecnico,
-            id_subcategoria,
-            experiencia: experiencia || null,
-            precio_estimado: precio_estimado || null
+        // Normalizar IDs
+        const idsSubcategoria = items.map(item => Number(item.id_subcategoria));
+
+        // Verificar duplicados en el array enviado
+        const idsUnicos = [...new Set(idsSubcategoria)];
+        if (idsUnicos.length !== idsSubcategoria.length) {
+            await t.rollback();
+            throw new ValidationError('El array contiene subcategorías duplicadas');
+        }
+
+        // Buscar el técnico autenticado
+        const tecnico = await obtenerTecnico(req.usuario.id_usuario, t);
+
+        // Verificar que todas las subcategorías existen y están activas
+        const subcategoriasDB = await Subcategoria.findAll({
+            where: { id_subcategoria: idsSubcategoria, activo: true },
+            include: [{ model: Categoria, attributes: ['id_categoria', 'nombre'] }],
+            transaction: t,
         });
 
-        logger.info(`agregarEspecialidad: Técnico ${tecnico.id_tecnico} agregó especialidad ${id_subcategoria}`);
+        if (subcategoriasDB.length !== idsSubcategoria.length) {
+            const idsEncontrados = new Set(subcategoriasDB.map(s => s.id_subcategoria));
+            const noEncontradas = idsSubcategoria.filter(id => !idsEncontrados.has(id));
+            await t.rollback();
+            throw new NotFoundError(`Las siguientes subcategorías no existen o están inactivas: ${noEncontradas.join(', ')}`);
+        }
+
+        // Verificar que no estén ya registradas
+        const existentes = await Especialidad.findAll({
+            where: { id_tecnico: tecnico.id_tecnico, id_subcategoria: idsSubcategoria },
+            transaction: t,
+        });
+
+        if (existentes.length > 0) {
+            const idsExistentes = existentes.map(e => e.id_subcategoria);
+            await t.rollback();
+            throw new ConflictError(`Ya tienes registradas las siguientes especialidades: ${idsExistentes.join(', ')}`);
+        }
+
+        // Crear todas las especialidades en bulk
+        const registros = items.map(item => ({
+            id_tecnico: tecnico.id_tecnico,
+            id_subcategoria: Number(item.id_subcategoria),
+            experiencia: item.experiencia || null,
+        }));
+
+        const nuevas = await Especialidad.bulkCreate(registros, { transaction: t });
+
+        await t.commit();
+
+        // Mapear nombres para respuesta
+        const subcatMap = Object.fromEntries(
+            subcategoriasDB.map(s => [s.id_subcategoria, {
+                nombre: s.nombre,
+                categoria: s.Categoria?.nombre ?? null,
+            }])
+        );
+
+        logger.info(`agregarEspecialidad: Técnico ${tecnico.id_tecnico} agregó ${nuevas.length} especialidad(es): ${idsSubcategoria.join(', ')}`);
 
         return res.status(201).json({
             success: true,
-            message: 'Especialidad agregada exitosamente',
-            data: {
-                id_especialidad: nuevaEspecialidad.id_especialidad,
-                subcategoria: subcategoria.nombre,
-                categoria: subcategoria.Categoria?.nombre,
-                experiencia: nuevaEspecialidad.experiencia,
-                precio_estimado: nuevaEspecialidad.precio_estimado
-            }
+            message: `${nuevas.length} especialidad${nuevas.length > 1 ? 'es' : ''} agregada${nuevas.length > 1 ? 's' : ''} exitosamente`,
+            data: nuevas.map(n => ({
+                id_especialidad: n.id_especialidad,
+                id_subcategoria: n.id_subcategoria,
+                subcategoria: subcatMap[n.id_subcategoria]?.nombre ?? null,
+                categoria: subcatMap[n.id_subcategoria]?.categoria ?? null,
+                experiencia: n.experiencia,
+            })),
         });
 
     } catch (error) {
+        if (!t.finished) {
+            await t.rollback();
+        }
         return handleError(res, error);
     }
 };
@@ -162,18 +226,11 @@ export const agregarEspecialidad = async (req, res) => {
  *                         type: string
  *                       experiencia:
  *                         type: string
- *                       precio_estimado:
- *                         type: number
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
  */
 export const obtenerMisEspecialidades = async (req, res) => {
     try {
-        // Verificar que el usuario autenticado tiene rol Tecnico
-        if (req.usuario.rol !== 'TECNICO') {
-            throw new ForbiddenError('Esta ruta es exclusiva para técnicos');
-        }
-
         // Buscar el tecnico autenticado
         const tecnico = await obtenerTecnico(req.usuario.id_usuario);
 
@@ -205,7 +262,6 @@ export const obtenerMisEspecialidades = async (req, res) => {
                 subcategoria: esp.Subcategoria?.nombre ?? null,
                 categoria: esp.Subcategoria?.Categoria?.nombre ?? null,
                 experiencia: esp.experiencia,
-                precio_estimado: esp.precio_estimado,
                 fecha_agregada: esp.createdAt
             }))
         });
@@ -243,11 +299,6 @@ export const obtenerMisEspecialidades = async (req, res) => {
  */
 export const eliminarEspecialidad = async (req, res) => {
     try {
-        // Verificar que el usuario autenticado tiene rol Tecnico
-        if (req.usuario.rol !== 'TECNICO') {
-            throw new ForbiddenError('Esta ruta es exclusiva para técnicos');
-        }
-
         const { id } = req.params;
 
         // Buscar el tecnico autenticado

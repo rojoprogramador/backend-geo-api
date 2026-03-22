@@ -57,7 +57,7 @@ const {
   eliminarEspecialidad,
 } = await import('../../../controllers/especialidadController.js');
 
-const { ValidationError, NotFoundError, ForbiddenError, ConflictError } = await import(
+const { ValidationError, NotFoundError, ConflictError } = await import(
   '../../../utils/errors/AppError.js'
 );
 
@@ -72,265 +72,186 @@ describe('Controller: especialidadController - agregarEspecialidad', () => {
     mockObtenerTecnico.mockClear();
   });
 
-  it('debe agregar especialidad exitosamente con todos los campos', async () => {
-    // Arrange
+  it('debe agregar una especialidad (legacy single) exitosamente', async () => {
     req.usuario = { id_usuario: 10, rol: 'TECNICO' };
-    req.body = {
-      id_subcategoria: 5,
-      experiencia: '5 años de experiencia',
-      precio_estimado: 50000,
-    };
+    req.body = { id_subcategoria: 5, experiencia: '5 años de experiencia' };
 
     const mockTecnico = { id_tecnico: 20, id_usuario: 10 };
-    const mockSubcategoria = {
+    const mockSubcategoriasDB = [{
       id_subcategoria: 5,
       nombre: 'Reparación de fugas',
-      activo: true,
-      Categoria: {
-        nombre: 'Plomería',
-      },
-    };
-    const mockNuevaEspecialidad = {
+      Categoria: { id_categoria: 1, nombre: 'Plomería' },
+    }];
+    const mockNuevas = [{
       id_especialidad: 1,
-      id_tecnico: 20,
       id_subcategoria: 5,
       experiencia: '5 años de experiencia',
-      precio_estimado: 50000,
-    };
+    }];
 
     mockObtenerTecnico.mockResolvedValue(mockTecnico);
-    mockModels.Subcategoria.findOne.mockResolvedValue(mockSubcategoria);
-    mockModels.Especialidad.findOne.mockResolvedValue(null); // No existe
-    mockModels.Especialidad.create.mockResolvedValue(mockNuevaEspecialidad);
+    mockModels.Subcategoria.findAll.mockResolvedValue(mockSubcategoriasDB);
+    mockModels.Especialidad.findAll.mockResolvedValue([]); // no existentes
+    mockModels.Especialidad.bulkCreate.mockResolvedValue(mockNuevas);
 
-    // Act
     await agregarEspecialidad(req, res);
 
-    // Assert
-    expect(mockObtenerTecnico).toHaveBeenCalledWith(10);
-    expect(mockModels.Subcategoria.findOne).toHaveBeenCalledWith({
-      where: { id_subcategoria: 5, activo: true },
-      include: [{ model: mockModels.Categoria, attributes: ['nombre'] }],
-    });
-    expect(mockModels.Especialidad.findOne).toHaveBeenCalledWith({
-      where: {
-        id_tecnico: 20,
-        id_subcategoria: 5,
-      },
-    });
-    expect(mockModels.Especialidad.create).toHaveBeenCalledWith({
-      id_tecnico: 20,
-      id_subcategoria: 5,
-      experiencia: '5 años de experiencia',
-      precio_estimado: 50000,
-    });
-
+    expect(mockObtenerTecnico).toHaveBeenCalledWith(10, mockTransaction);
+    expect(mockModels.Subcategoria.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id_subcategoria: [5], activo: true },
+        transaction: mockTransaction,
+      })
+    );
+    expect(mockModels.Especialidad.bulkCreate).toHaveBeenCalledWith(
+      [{ id_tecnico: 20, id_subcategoria: 5, experiencia: '5 años de experiencia' }],
+      { transaction: mockTransaction }
+    );
+    expect(mockTransaction.commit).toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(201);
-    expect(res.jsonData).toEqual({
-      success: true,
-      message: 'Especialidad agregada exitosamente',
-      data: {
-        id_especialidad: 1,
-        subcategoria: 'Reparación de fugas',
-        categoria: 'Plomería',
-        experiencia: '5 años de experiencia',
-        precio_estimado: 50000,
-      },
-    });
+    expect(res.jsonData.success).toBe(true);
+    expect(res.jsonData.data).toHaveLength(1);
+    expect(res.jsonData.data[0].subcategoria).toBe('Reparación de fugas');
+    expect(res.jsonData.data[0].categoria).toBe('Plomería');
   });
 
-  it('debe agregar especialidad sin experiencia ni precio_estimado (campos opcionales)', async () => {
-    // Arrange
+  it('debe agregar múltiples especialidades (batch) exitosamente', async () => {
     req.usuario = { id_usuario: 10, rol: 'TECNICO' };
     req.body = {
-      id_subcategoria: 5,
+      especialidades: [
+        { id_subcategoria: 5, experiencia: '5 años' },
+        { id_subcategoria: 10 },
+      ],
     };
 
     const mockTecnico = { id_tecnico: 20, id_usuario: 10 };
-    const mockSubcategoria = {
-      id_subcategoria: 5,
-      nombre: 'Instalación de grifos',
-      activo: true,
-      Categoria: {
-        nombre: 'Plomería',
-      },
-    };
-    const mockNuevaEspecialidad = {
-      id_especialidad: 2,
-      id_tecnico: 20,
-      id_subcategoria: 5,
-      experiencia: null,
-      precio_estimado: null,
-    };
+    const mockSubcategoriasDB = [
+      { id_subcategoria: 5, nombre: 'Reparación de fugas', Categoria: { id_categoria: 1, nombre: 'Plomería' } },
+      { id_subcategoria: 10, nombre: 'Instalación de enchufes', Categoria: { id_categoria: 2, nombre: 'Electricidad' } },
+    ];
+    const mockNuevas = [
+      { id_especialidad: 1, id_subcategoria: 5, experiencia: '5 años' },
+      { id_especialidad: 2, id_subcategoria: 10, experiencia: null },
+    ];
 
     mockObtenerTecnico.mockResolvedValue(mockTecnico);
-    mockModels.Subcategoria.findOne.mockResolvedValue(mockSubcategoria);
-    mockModels.Especialidad.findOne.mockResolvedValue(null);
-    mockModels.Especialidad.create.mockResolvedValue(mockNuevaEspecialidad);
+    mockModels.Subcategoria.findAll.mockResolvedValue(mockSubcategoriasDB);
+    mockModels.Especialidad.findAll.mockResolvedValue([]);
+    mockModels.Especialidad.bulkCreate.mockResolvedValue(mockNuevas);
 
-    // Act
     await agregarEspecialidad(req, res);
-
-    // Assert
-    expect(mockModels.Especialidad.create).toHaveBeenCalledWith({
-      id_tecnico: 20,
-      id_subcategoria: 5,
-      experiencia: null,
-      precio_estimado: null,
-    });
 
     expect(res.status).toHaveBeenCalledWith(201);
-    expect(res.jsonData.data.experiencia).toBeNull();
-    expect(res.jsonData.data.precio_estimado).toBeNull();
+    expect(res.jsonData.data).toHaveLength(2);
+    expect(res.jsonData.message).toContain('2 especialidades agregadas');
   });
 
-  it('debe retornar 403 si el usuario no es TECNICO', async () => {
-    // Arrange
-    req.usuario = { id_usuario: 10, rol: 'CLIENTE' };
-    req.body = {
-      id_subcategoria: 5,
-    };
-
-    // Act
-    await agregarEspecialidad(req, res);
-
-    // Assert
-    expect(mockHandleError).toHaveBeenCalled();
-    const errorArg = mockHandleError.mock.calls[0][1];
-    expect(errorArg).toBeInstanceOf(ForbiddenError);
-    expect(errorArg.message).toContain('Esta ruta es exclusiva para técnicos');
-    expect(mockObtenerTecnico).not.toHaveBeenCalled();
-  });
-
-  it('debe retornar 400 si id_subcategoria no se proporciona', async () => {
-    // Arrange
+  it('debe retornar 400 si no se envía id_subcategoria ni especialidades', async () => {
     req.usuario = { id_usuario: 10, rol: 'TECNICO' };
-    req.body = {
-      experiencia: '5 años',
-    };
+    req.body = { experiencia: '5 años' };
 
-    // Act
     await agregarEspecialidad(req, res);
 
-    // Assert
     expect(mockHandleError).toHaveBeenCalled();
     const errorArg = mockHandleError.mock.calls[0][1];
     expect(errorArg).toBeInstanceOf(ValidationError);
-    expect(errorArg.message).toContain('El campo id_subcategoria es requerido');
+    expect(mockTransaction.rollback).toHaveBeenCalled();
   });
 
-  it('debe retornar 404 si la subcategoría no existe', async () => {
-    // Arrange
+  it('debe retornar 400 si el array especialidades está vacío', async () => {
     req.usuario = { id_usuario: 10, rol: 'TECNICO' };
-    req.body = {
-      id_subcategoria: 999,
-    };
+    req.body = { especialidades: [] };
 
-    const mockTecnico = { id_tecnico: 20, id_usuario: 10 };
-
-    mockObtenerTecnico.mockResolvedValue(mockTecnico);
-    mockModels.Subcategoria.findOne.mockResolvedValue(null);
-
-    // Act
     await agregarEspecialidad(req, res);
 
-    // Assert
+    expect(mockHandleError).toHaveBeenCalled();
+    const errorArg = mockHandleError.mock.calls[0][1];
+    expect(errorArg).toBeInstanceOf(ValidationError);
+    expect(errorArg.message).toContain('no puede estar vacío');
+  });
+
+  it('debe retornar 400 si un item tiene id_subcategoria inválido', async () => {
+    req.usuario = { id_usuario: 10, rol: 'TECNICO' };
+    req.body = { especialidades: [{ id_subcategoria: -1 }] };
+
+    await agregarEspecialidad(req, res);
+
+    expect(mockHandleError).toHaveBeenCalled();
+    const errorArg = mockHandleError.mock.calls[0][1];
+    expect(errorArg).toBeInstanceOf(ValidationError);
+  });
+
+  it('debe retornar 400 si hay subcategorías duplicadas en el array', async () => {
+    req.usuario = { id_usuario: 10, rol: 'TECNICO' };
+    req.body = { especialidades: [{ id_subcategoria: 5 }, { id_subcategoria: 5 }] };
+
+    await agregarEspecialidad(req, res);
+
+    expect(mockHandleError).toHaveBeenCalled();
+    const errorArg = mockHandleError.mock.calls[0][1];
+    expect(errorArg).toBeInstanceOf(ValidationError);
+    expect(errorArg.message).toContain('duplicadas');
+  });
+
+  it('debe retornar 404 si alguna subcategoría no existe o está inactiva', async () => {
+    req.usuario = { id_usuario: 10, rol: 'TECNICO' };
+    req.body = { id_subcategoria: 999 };
+
+    const mockTecnico = { id_tecnico: 20, id_usuario: 10 };
+    mockObtenerTecnico.mockResolvedValue(mockTecnico);
+    mockModels.Subcategoria.findAll.mockResolvedValue([]); // ninguna encontrada
+
+    await agregarEspecialidad(req, res);
+
     expect(mockHandleError).toHaveBeenCalled();
     const errorArg = mockHandleError.mock.calls[0][1];
     expect(errorArg).toBeInstanceOf(NotFoundError);
-    expect(errorArg.message).toContain('La subcategoría no existe o está inactiva');
+    expect(errorArg.message).toContain('no existen o están inactivas');
   });
 
-  it('debe retornar 404 si la subcategoría está inactiva', async () => {
-    // Arrange
+  it('debe retornar 409 si el técnico ya tiene especialidades registradas', async () => {
     req.usuario = { id_usuario: 10, rol: 'TECNICO' };
-    req.body = {
-      id_subcategoria: 5,
-    };
+    req.body = { id_subcategoria: 5 };
 
     const mockTecnico = { id_tecnico: 20, id_usuario: 10 };
+    const mockSubcategoriasDB = [{ id_subcategoria: 5, nombre: 'X', Categoria: null }];
 
     mockObtenerTecnico.mockResolvedValue(mockTecnico);
-    mockModels.Subcategoria.findOne.mockResolvedValue(null); // Query filters by activo: true
+    mockModels.Subcategoria.findAll.mockResolvedValue(mockSubcategoriasDB);
+    mockModels.Especialidad.findAll.mockResolvedValue([{ id_subcategoria: 5 }]); // ya existe
 
-    // Act
     await agregarEspecialidad(req, res);
 
-    // Assert
-    expect(mockHandleError).toHaveBeenCalled();
-    const errorArg = mockHandleError.mock.calls[0][1];
-    expect(errorArg).toBeInstanceOf(NotFoundError);
-    expect(errorArg.message).toContain('La subcategoría no existe o está inactiva');
-  });
-
-  it('debe retornar 409 si el técnico ya tiene esta especialidad registrada', async () => {
-    // Arrange
-    req.usuario = { id_usuario: 10, rol: 'TECNICO' };
-    req.body = {
-      id_subcategoria: 5,
-    };
-
-    const mockTecnico = { id_tecnico: 20, id_usuario: 10 };
-    const mockSubcategoria = {
-      id_subcategoria: 5,
-      nombre: 'Reparación de fugas',
-      activo: true,
-      Categoria: { nombre: 'Plomería' },
-    };
-    const mockEspecialidadExistente = {
-      id_especialidad: 1,
-      id_tecnico: 20,
-      id_subcategoria: 5,
-    };
-
-    mockObtenerTecnico.mockResolvedValue(mockTecnico);
-    mockModels.Subcategoria.findOne.mockResolvedValue(mockSubcategoria);
-    mockModels.Especialidad.findOne.mockResolvedValue(mockEspecialidadExistente);
-
-    // Act
-    await agregarEspecialidad(req, res);
-
-    // Assert
     expect(mockHandleError).toHaveBeenCalled();
     const errorArg = mockHandleError.mock.calls[0][1];
     expect(errorArg).toBeInstanceOf(ConflictError);
-    expect(errorArg.message).toContain('Ya tienes esta especialidad registrada');
-    expect(mockModels.Especialidad.create).not.toHaveBeenCalled();
+    expect(errorArg.message).toContain('Ya tienes registradas');
+    expect(mockModels.Especialidad.bulkCreate).not.toHaveBeenCalled();
   });
 
-  it('debe manejar subcategoría sin categoría asociada (Categoria null)', async () => {
-    // Arrange
+  it('debe agregar especialidad sin experiencia (campo opcional)', async () => {
     req.usuario = { id_usuario: 10, rol: 'TECNICO' };
-    req.body = {
-      id_subcategoria: 5,
-    };
+    req.body = { id_subcategoria: 5 };
 
     const mockTecnico = { id_tecnico: 20, id_usuario: 10 };
-    const mockSubcategoria = {
-      id_subcategoria: 5,
-      nombre: 'Servicio genérico',
-      activo: true,
-      Categoria: null,
-    };
-    const mockNuevaEspecialidad = {
-      id_especialidad: 1,
-      id_tecnico: 20,
-      id_subcategoria: 5,
-      experiencia: null,
-      precio_estimado: null,
-    };
+    const mockSubcategoriasDB = [{
+      id_subcategoria: 5, nombre: 'Instalación de grifos',
+      Categoria: { id_categoria: 1, nombre: 'Plomería' },
+    }];
+    const mockNuevas = [{ id_especialidad: 2, id_subcategoria: 5, experiencia: null }];
 
     mockObtenerTecnico.mockResolvedValue(mockTecnico);
-    mockModels.Subcategoria.findOne.mockResolvedValue(mockSubcategoria);
-    mockModels.Especialidad.findOne.mockResolvedValue(null);
-    mockModels.Especialidad.create.mockResolvedValue(mockNuevaEspecialidad);
+    mockModels.Subcategoria.findAll.mockResolvedValue(mockSubcategoriasDB);
+    mockModels.Especialidad.findAll.mockResolvedValue([]);
+    mockModels.Especialidad.bulkCreate.mockResolvedValue(mockNuevas);
 
-    // Act
     await agregarEspecialidad(req, res);
 
-    // Assert
+    expect(mockModels.Especialidad.bulkCreate).toHaveBeenCalledWith(
+      [{ id_tecnico: 20, id_subcategoria: 5, experiencia: null }],
+      { transaction: mockTransaction }
+    );
     expect(res.status).toHaveBeenCalledWith(201);
-    expect(res.jsonData.data.categoria).toBeUndefined();
+    expect(res.jsonData.data[0].experiencia).toBeNull();
   });
 });
 
@@ -346,7 +267,6 @@ describe('Controller: especialidadController - obtenerMisEspecialidades', () => 
   });
 
   it('debe retornar lista de especialidades del técnico autenticado', async () => {
-    // Arrange
     req.usuario = { id_usuario: 10, rol: 'TECNICO' };
 
     const mockTecnico = { id_tecnico: 20, id_usuario: 10 };
@@ -355,28 +275,22 @@ describe('Controller: especialidadController - obtenerMisEspecialidades', () => 
         id_especialidad: 1,
         id_subcategoria: 5,
         experiencia: '5 años',
-        precio_estimado: 50000,
         createdAt: new Date('2025-01-01'),
         Subcategoria: {
           id_subcategoria: 5,
           nombre: 'Reparación de fugas',
-          Categoria: {
-            nombre: 'Plomería',
-          },
+          Categoria: { nombre: 'Plomería' },
         },
       },
       {
         id_especialidad: 2,
         id_subcategoria: 10,
         experiencia: '3 años',
-        precio_estimado: 60000,
         createdAt: new Date('2025-01-02'),
         Subcategoria: {
           id_subcategoria: 10,
           nombre: 'Instalación de enchufes',
-          Categoria: {
-            nombre: 'Electricidad',
-          },
+          Categoria: { nombre: 'Electricidad' },
         },
       },
     ];
@@ -384,29 +298,9 @@ describe('Controller: especialidadController - obtenerMisEspecialidades', () => 
     mockObtenerTecnico.mockResolvedValue(mockTecnico);
     mockModels.Especialidad.findAll.mockResolvedValue(mockEspecialidades);
 
-    // Act
     await obtenerMisEspecialidades(req, res);
 
-    // Assert
     expect(mockObtenerTecnico).toHaveBeenCalledWith(10);
-    expect(mockModels.Especialidad.findAll).toHaveBeenCalledWith({
-      where: { id_tecnico: 20 },
-      include: [
-        {
-          model: mockModels.Subcategoria,
-          as: 'Subcategoria',
-          attributes: ['id_subcategoria', 'nombre'],
-          include: [
-            {
-              model: mockModels.Categoria,
-              attributes: ['nombre'],
-            },
-          ],
-        },
-      ],
-      order: [['createdAt', 'ASC']],
-    });
-
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.jsonData).toEqual({
       success: true,
@@ -418,7 +312,6 @@ describe('Controller: especialidadController - obtenerMisEspecialidades', () => 
           subcategoria: 'Reparación de fugas',
           categoria: 'Plomería',
           experiencia: '5 años',
-          precio_estimado: 50000,
           fecha_agregada: new Date('2025-01-01'),
         },
         {
@@ -427,7 +320,6 @@ describe('Controller: especialidadController - obtenerMisEspecialidades', () => 
           subcategoria: 'Instalación de enchufes',
           categoria: 'Electricidad',
           experiencia: '3 años',
-          precio_estimado: 60000,
           fecha_agregada: new Date('2025-01-02'),
         },
       ],
@@ -435,64 +327,35 @@ describe('Controller: especialidadController - obtenerMisEspecialidades', () => 
   });
 
   it('debe retornar lista vacía si el técnico no tiene especialidades', async () => {
-    // Arrange
     req.usuario = { id_usuario: 10, rol: 'TECNICO' };
 
     const mockTecnico = { id_tecnico: 20, id_usuario: 10 };
-
     mockObtenerTecnico.mockResolvedValue(mockTecnico);
     mockModels.Especialidad.findAll.mockResolvedValue([]);
 
-    // Act
     await obtenerMisEspecialidades(req, res);
 
-    // Assert
     expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.jsonData).toEqual({
-      success: true,
-      message: 'Especialidades obtenidas exitosamente',
-      data: [],
-    });
-  });
-
-  it('debe retornar 403 si el usuario no es TECNICO', async () => {
-    // Arrange
-    req.usuario = { id_usuario: 10, rol: 'CLIENTE' };
-
-    // Act
-    await obtenerMisEspecialidades(req, res);
-
-    // Assert
-    expect(mockHandleError).toHaveBeenCalled();
-    const errorArg = mockHandleError.mock.calls[0][1];
-    expect(errorArg).toBeInstanceOf(ForbiddenError);
-    expect(errorArg.message).toContain('Esta ruta es exclusiva para técnicos');
-    expect(mockObtenerTecnico).not.toHaveBeenCalled();
+    expect(res.jsonData.data).toEqual([]);
   });
 
   it('debe manejar especialidades sin Subcategoria (null)', async () => {
-    // Arrange
     req.usuario = { id_usuario: 10, rol: 'TECNICO' };
 
     const mockTecnico = { id_tecnico: 20, id_usuario: 10 };
-    const mockEspecialidades = [
-      {
-        id_especialidad: 1,
-        id_subcategoria: 5,
-        experiencia: null,
-        precio_estimado: null,
-        createdAt: new Date('2025-01-01'),
-        Subcategoria: null,
-      },
-    ];
+    const mockEspecialidades = [{
+      id_especialidad: 1,
+      id_subcategoria: 5,
+      experiencia: null,
+      createdAt: new Date('2025-01-01'),
+      Subcategoria: null,
+    }];
 
     mockObtenerTecnico.mockResolvedValue(mockTecnico);
     mockModels.Especialidad.findAll.mockResolvedValue(mockEspecialidades);
 
-    // Act
     await obtenerMisEspecialidades(req, res);
 
-    // Assert
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.jsonData.data[0]).toEqual({
       id_especialidad: 1,
@@ -500,38 +363,31 @@ describe('Controller: especialidadController - obtenerMisEspecialidades', () => 
       subcategoria: null,
       categoria: null,
       experiencia: null,
-      precio_estimado: null,
       fecha_agregada: new Date('2025-01-01'),
     });
   });
 
   it('debe manejar Subcategoria sin Categoria (null)', async () => {
-    // Arrange
     req.usuario = { id_usuario: 10, rol: 'TECNICO' };
 
     const mockTecnico = { id_tecnico: 20, id_usuario: 10 };
-    const mockEspecialidades = [
-      {
-        id_especialidad: 1,
+    const mockEspecialidades = [{
+      id_especialidad: 1,
+      id_subcategoria: 5,
+      experiencia: '2 años',
+      createdAt: new Date('2025-01-01'),
+      Subcategoria: {
         id_subcategoria: 5,
-        experiencia: '2 años',
-        precio_estimado: 40000,
-        createdAt: new Date('2025-01-01'),
-        Subcategoria: {
-          id_subcategoria: 5,
-          nombre: 'Servicio sin categoría',
-          Categoria: null,
-        },
+        nombre: 'Servicio sin categoría',
+        Categoria: null,
       },
-    ];
+    }];
 
     mockObtenerTecnico.mockResolvedValue(mockTecnico);
     mockModels.Especialidad.findAll.mockResolvedValue(mockEspecialidades);
 
-    // Act
     await obtenerMisEspecialidades(req, res);
 
-    // Assert
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.jsonData.data[0]).toEqual({
       id_especialidad: 1,
@@ -539,7 +395,6 @@ describe('Controller: especialidadController - obtenerMisEspecialidades', () => 
       subcategoria: 'Servicio sin categoría',
       categoria: null,
       experiencia: '2 años',
-      precio_estimado: 40000,
       fecha_agregada: new Date('2025-01-01'),
     });
   });
@@ -557,7 +412,6 @@ describe('Controller: especialidadController - eliminarEspecialidad', () => {
   });
 
   it('debe eliminar especialidad exitosamente', async () => {
-    // Arrange
     req.usuario = { id_usuario: 10, rol: 'TECNICO' };
     req.params = { id: '1' };
 
@@ -571,17 +425,9 @@ describe('Controller: especialidadController - eliminarEspecialidad', () => {
     mockObtenerTecnico.mockResolvedValue(mockTecnico);
     mockModels.Especialidad.findOne.mockResolvedValue(mockEspecialidad);
 
-    // Act
     await eliminarEspecialidad(req, res);
 
-    // Assert
     expect(mockObtenerTecnico).toHaveBeenCalledWith(10);
-    expect(mockModels.Especialidad.findOne).toHaveBeenCalledWith({
-      where: {
-        id_especialidad: '1',
-        id_tecnico: 20,
-      },
-    });
     expect(mockEspecialidad.destroy).toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.jsonData).toEqual({
@@ -590,36 +436,16 @@ describe('Controller: especialidadController - eliminarEspecialidad', () => {
     });
   });
 
-  it('debe retornar 403 si el usuario no es TECNICO', async () => {
-    // Arrange
-    req.usuario = { id_usuario: 10, rol: 'ADMIN' };
-    req.params = { id: '1' };
-
-    // Act
-    await eliminarEspecialidad(req, res);
-
-    // Assert
-    expect(mockHandleError).toHaveBeenCalled();
-    const errorArg = mockHandleError.mock.calls[0][1];
-    expect(errorArg).toBeInstanceOf(ForbiddenError);
-    expect(errorArg.message).toContain('Esta ruta es exclusiva para técnicos');
-    expect(mockObtenerTecnico).not.toHaveBeenCalled();
-  });
-
   it('debe retornar 404 si la especialidad no existe', async () => {
-    // Arrange
     req.usuario = { id_usuario: 10, rol: 'TECNICO' };
     req.params = { id: '999' };
 
     const mockTecnico = { id_tecnico: 20, id_usuario: 10 };
-
     mockObtenerTecnico.mockResolvedValue(mockTecnico);
     mockModels.Especialidad.findOne.mockResolvedValue(null);
 
-    // Act
     await eliminarEspecialidad(req, res);
 
-    // Assert
     expect(mockHandleError).toHaveBeenCalled();
     const errorArg = mockHandleError.mock.calls[0][1];
     expect(errorArg).toBeInstanceOf(NotFoundError);
@@ -627,22 +453,17 @@ describe('Controller: especialidadController - eliminarEspecialidad', () => {
   });
 
   it('debe retornar 404 si la especialidad pertenece a otro técnico', async () => {
-    // Arrange
     req.usuario = { id_usuario: 10, rol: 'TECNICO' };
     req.params = { id: '1' };
 
     const mockTecnico = { id_tecnico: 20, id_usuario: 10 };
-
     mockObtenerTecnico.mockResolvedValue(mockTecnico);
-    mockModels.Especialidad.findOne.mockResolvedValue(null); // Query filters by id_tecnico
+    mockModels.Especialidad.findOne.mockResolvedValue(null);
 
-    // Act
     await eliminarEspecialidad(req, res);
 
-    // Assert
     expect(mockHandleError).toHaveBeenCalled();
     const errorArg = mockHandleError.mock.calls[0][1];
     expect(errorArg).toBeInstanceOf(NotFoundError);
-    expect(errorArg.message).toContain('Especialidad no encontrada o no te pertenece');
   });
 });

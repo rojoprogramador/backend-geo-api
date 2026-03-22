@@ -7,6 +7,7 @@ import {
     TecnicoSolicitudQueue,
     EstadoSolicitud,
     Usuario,
+    Cliente,
 } from '../models/index.js';
 import { handleError } from '../utils/errorHandler.js';
 import { ValidationError, NotFoundError, ForbiddenError, ConflictError } from '../utils/errors/AppError.js';
@@ -321,6 +322,34 @@ export const crearCotizacion = async (req, res) => {
         }
 
         await t.commit();
+
+        // ── WebSocket: notificar al cliente en tiempo real (best-effort) ──
+        try {
+            const { emitNuevaCotizacion } = await import('../sockets/services/socketEmitter.js');
+            const { addCotizacion: addCotizacionBatch } = await import('../sockets/services/cotizacionBatcher.js');
+
+            const clienteOwner = await Cliente.findByPk(solicitud.id_cliente, { attributes: ['id_usuario'] });
+            const idClienteUsuario = clienteOwner?.id_usuario;
+
+            if (idClienteUsuario) {
+                emitNuevaCotizacion({
+                    id_solicitud: Number(id_solicitud),
+                    id_cliente_usuario: idClienteUsuario,
+                    cotizacionData: {
+                        id_cotizacion:      nuevaCotizacion.id_cotizacion,
+                        id_solicitud:       Number(id_solicitud),
+                        valor_cotizacion:   valorNum,
+                        tiempo_estimado:    tiempo_estimado ? String(tiempo_estimado).trim() : null,
+                        incluye_materiales: Boolean(incluye_materiales),
+                        dias_garantia:      diasNum,
+                        id_tecnico:         tecnico.id_tecnico,
+                    },
+                });
+                addCotizacionBatch(Number(id_solicitud), idClienteUsuario);
+            }
+        } catch (wsErr) {
+            logger.warn(`crearCotizacion: WebSocket emit falló (no-crítico): ${wsErr.message}`);
+        }
 
         // Cargar la cotización con el técnico para la respuesta
         const cotizacionConTecnico = await Cotizacion.findByPk(nuevaCotizacion.id_cotizacion, {
@@ -691,6 +720,38 @@ export const aceptarCotizacion = async (req, res) => {
 
         await t.commit();
 
+        // ── WebSocket: notificar técnico ganador y rechazados (best-effort) ──
+        try {
+            const { emitCotizacionAceptada } = await import('../sockets/services/socketEmitter.js');
+            const { cancelBatch } = await import('../sockets/services/cotizacionBatcher.js');
+
+            const tecnicoGanador = await Tecnico.findByPk(idTecnico, { attributes: ['id_usuario'] });
+            const cotizacionesRechazadas = await Cotizacion.findAll({
+                where: { id_solicitud: idSolicitud, estado: 'RECHAZADA' },
+                attributes: ['id_tecnico'],
+            });
+            const idsRechazados = await Promise.all(
+                cotizacionesRechazadas.map(async (c) => {
+                    const tec = await Tecnico.findByPk(c.id_tecnico, { attributes: ['id_usuario'] });
+                    return tec?.id_usuario;
+                })
+            );
+
+            emitCotizacionAceptada({
+                id_solicitud: idSolicitud,
+                id_tecnico_ganador_usuario: tecnicoGanador?.id_usuario,
+                tecnicosRechazados: idsRechazados.filter(Boolean),
+                cotizacionData: {
+                    id_cotizacion: idCotizacion,
+                    id_solicitud:  idSolicitud,
+                    id_tecnico:    idTecnico,
+                },
+            });
+            cancelBatch(idSolicitud);
+        } catch (wsErr) {
+            logger.warn(`aceptarCotizacion: WebSocket emit falló (no-crítico): ${wsErr.message}`);
+        }
+
         // Cargar la cotización actualizada con datos del técnico para la respuesta
         const cotizacionAceptada = await Cotizacion.findByPk(idCotizacion, {
             include: [
@@ -926,6 +987,21 @@ export const rechazarCotizacion = async (req, res) => {
         }
 
         await t.commit();
+
+        // ── WebSocket: notificar al técnico que su cotización fue rechazada (best-effort) ──
+        try {
+            const { emitCotizacionRechazada } = await import('../sockets/services/socketEmitter.js');
+            const tecnicoRechazado = await Tecnico.findByPk(cotizacion.id_tecnico, { attributes: ['id_usuario'] });
+            if (tecnicoRechazado?.id_usuario) {
+                emitCotizacionRechazada({
+                    id_solicitud:       idSolicitud,
+                    id_cotizacion:      idCotizacion,
+                    id_tecnico_usuario: tecnicoRechazado.id_usuario,
+                });
+            }
+        } catch (wsErr) {
+            logger.warn(`rechazarCotizacion: WebSocket emit falló (no-crítico): ${wsErr.message}`);
+        }
 
         return res.status(200).json({
             success: true,

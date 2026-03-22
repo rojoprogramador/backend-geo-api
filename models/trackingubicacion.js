@@ -9,7 +9,11 @@ const TrackingUbicacion = sequelize.define('TrackingUbicacion', {
     },
     id_cita: {
         type: DataTypes.INTEGER,
-        allowNull: false
+        allowNull: true
+    },
+    id_solicitud: {
+        type: DataTypes.INTEGER,
+        allowNull: true
     },
     id_tecnico: {
         type: DataTypes.INTEGER,

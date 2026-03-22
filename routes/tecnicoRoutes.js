@@ -186,13 +186,13 @@ router.put('/:id/rechazar', verifyToken, permitirRoles('ADMIN'), rechazarTecnico
 // -----------------------------------------------------------------------
 
 // POST /api/tecnicos/especialidades — Agregar especialidad al perfil
-router.post('/especialidades', verifyToken, agregarEspecialidad);
+router.post('/especialidades', verifyToken, permitirRoles('TECNICO'), agregarEspecialidad);
 
 // GET  /api/tecnicos/especialidades — Listar especialidades del técnico
-router.get('/especialidades', verifyToken, obtenerMisEspecialidades);
+router.get('/especialidades', verifyToken, permitirRoles('TECNICO'), obtenerMisEspecialidades);
 
 // DELETE /api/tecnicos/especialidades/:id — Eliminar especialidad
-router.delete('/especialidades/:id', verifyToken, eliminarEspecialidad);
+router.delete('/especialidades/:id', verifyToken, permitirRoles('TECNICO'), eliminarEspecialidad);
 
 // -----------------------------------------------------------------------
 // RUTA DE FOTO DE PERFIL — Upload de imagen
