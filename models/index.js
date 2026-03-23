@@ -6,7 +6,7 @@ import TipoDoc from "./TipoDoc.js";
 import Usuario from "./Usuario.js";
 import Pais from "./pais.js";                  
 import Ciudad from "./ciudad.js";              
-import Cliente from "./Cliente.js";          
+import Cliente from "./cliente.js";          
 import Tecnico from "./tecnico.js";          
 import CertificadoTecnico from "./certificadotecnico.js"; 
 import Categoria from "./categoria.js";
