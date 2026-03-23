@@ -51,9 +51,9 @@ jobs:
           DB_HOST: localhost
           DB_PORT: 5432
         run: |
-          echo "🛠️ Ejecutando migraciones..."
+          echo "Ejecutando migraciones..."
           npx sequelize-cli db:migrate --env test
-          echo "🌱 Ejecutando seeders..."
+          echo "Ejecutando seeders..."
           npx sequelize-cli db:seed:all --env test
 
       - name: Run Unit Tests with Coverage
@@ -66,3 +66,23 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  # ===================================================================
+  # Deploy a EC2 — solo en push a develop (despues de pasar los tests)
+  # ===================================================================
+  deploy-develop:
+    name: Deploy to EC2 (develop)
+    needs: test-and-analize
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd /opt/geo-api
+            bash scripts/deploy.sh

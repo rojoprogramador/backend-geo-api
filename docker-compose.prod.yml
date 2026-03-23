@@ -1,0 +1,62 @@
+services:
+
+  app:
+    build: .
+    container_name: geo-api-app
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-24h}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - geo-net
+    restart: unless-stopped
+
+  db:
+    image: postgis/postgis:17-3.5
+    container_name: geo-api-db
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # PostGIS usa ~300MB RAM — optimizar para t3.micro (1GB)
+    command: >
+      postgres
+        -c shared_buffers=128MB
+        -c effective_cache_size=256MB
+        -c work_mem=4MB
+        -c maintenance_work_mem=64MB
+        -c max_connections=30
+    networks:
+      - geo-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+    driver: local
+  uploads_data:
+    driver: local
+
+networks:
+  geo-net:
+    driver: bridge
