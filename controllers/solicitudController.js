@@ -226,6 +226,7 @@ export const crearSolicitudInmediata = async (req, res) => {
         // ----------------------------------------------------------------
         const tecnicosEncontrados = await sequelize.query(
             `SELECT t.id_tecnico,
+                    t.id_usuario,
                     t.prom_calificacion,
                     t.radio_cobertura_km,
                     ST_Distance(
@@ -316,6 +317,35 @@ export const crearSolicitudInmediata = async (req, res) => {
         }
 
         await t.commit();
+
+        // ── WebSocket: notificar técnicos cercanos en tiempo real (best-effort) ──
+        try {
+            if (tecnicosEncontrados.length > 0) {
+                const { emitNuevaSolicitud } = await import('../sockets/services/socketEmitter.js');
+                emitNuevaSolicitud({
+                    id_solicitud: nuevaSolicitud.id_solicitud,
+                    solicitudData: {
+                        id_solicitud:    nuevaSolicitud.id_solicitud,
+                        tipo_servicio:   'INMEDIATO',
+                        prioridad,
+                        descripcion:     descTrimmed,
+                        id_subcategoria: Number(id_subcategoria),
+                        fecha_solicitud: nuevaSolicitud.createdAt,
+                    },
+                    tecnicos: tecnicosEncontrados.map((tec) => ({
+                        id_tecnico:       tec.id_tecnico,
+                        id_usuario:       tec.id_usuario,
+                        distancia_metros: parseFloat(tec.distancia_metros),
+                        priority_score:   calcularPriorityScore(
+                            parseFloat(tec.distancia_metros),
+                            parseFloat(tec.prom_calificacion)
+                        ),
+                    })),
+                });
+            }
+        } catch (wsErr) {
+            logger.warn(`crearSolicitudInmediata: WebSocket emit falló (no-crítico): ${wsErr.message}`);
+        }
 
         const mensajeRespuesta = tecnicosEncontrados.length > 0
             ? `Solicitud inmediata creada. ${tecnicosEncontrados.length} técnicos notificados.`
@@ -507,6 +537,7 @@ export const crearSolicitudProgramada = async (req, res) => {
         // ----------------------------------------------------------------
         const tecnicosEncontrados = await sequelize.query(
             `SELECT t.id_tecnico,
+                    t.id_usuario,
                     t.prom_calificacion,
                     t.radio_cobertura_km,
                     ST_Distance(
@@ -613,6 +644,36 @@ export const crearSolicitudProgramada = async (req, res) => {
         }
 
         await t.commit();
+
+        // ── WebSocket: notificar técnicos cercanos en tiempo real (best-effort) ──
+        try {
+            if (tecnicosEncontrados.length > 0) {
+                const { emitNuevaSolicitud } = await import('../sockets/services/socketEmitter.js');
+                emitNuevaSolicitud({
+                    id_solicitud: nuevaSolicitud.id_solicitud,
+                    solicitudData: {
+                        id_solicitud:    nuevaSolicitud.id_solicitud,
+                        tipo_servicio:   'PROGRAMADO',
+                        prioridad,
+                        descripcion:     descTrimmed,
+                        id_subcategoria: Number(id_subcategoria),
+                        fecha_solicitud: nuevaSolicitud.createdAt,
+                        fecha_programada: fechaProgramadaDate.toISOString(),
+                    },
+                    tecnicos: tecnicosEncontrados.map((tec) => ({
+                        id_tecnico:       tec.id_tecnico,
+                        id_usuario:       tec.id_usuario,
+                        distancia_metros: parseFloat(tec.distancia_metros),
+                        priority_score:   calcularPriorityScore(
+                            parseFloat(tec.distancia_metros),
+                            parseFloat(tec.prom_calificacion)
+                        ),
+                    })),
+                });
+            }
+        } catch (wsErr) {
+            logger.warn(`crearSolicitudProgramada: WebSocket emit falló (no-crítico): ${wsErr.message}`);
+        }
 
         const mensajeRespuesta = tecnicosEncontrados.length > 0
             ? `Solicitud programada creada. ${tecnicosEncontrados.length} técnicos notificados.`
@@ -1459,6 +1520,14 @@ export const cancelarSolicitud = async (req, res) => {
         const tecnicosIgnorados = entradaActualizadas[0];
 
         await t.commit();
+
+        // ── WebSocket: notificar cancelación en tiempo real (best-effort) ──
+        try {
+            const { emitSolicitudCancelada } = await import('../sockets/services/socketEmitter.js');
+            emitSolicitudCancelada({ id_solicitud: id });
+        } catch (wsErr) {
+            logger.warn(`cancelarSolicitud: WebSocket emit falló (no-crítico): ${wsErr.message}`);
+        }
 
         // ----------------------------------------------------------------
         // 11. Log de auditoría

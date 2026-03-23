@@ -403,6 +403,10 @@ export const registrarTecnico = async (req, res) => {
  *                     tipo_documento:
  *                       type: string
  *                       example: "CC"
+ *                     url_foto:
+ *                       type: string
+ *                       nullable: true
+ *                       example: "/uploads/fotos/tecnico_42_1711034000000.jpg"
  *                     id_ciudad:
  *                       type: integer
  *                       nullable: true
@@ -511,6 +515,7 @@ export const obtenerPerfilTecnico = async (req, res) => {
                 num_identificacion:  usuario.num_identificacion,
                 fecha_nacimiento:    usuario.fecha_nacimiento,
                 tipo_documento:      usuario.TipoDoc?.descripcion ?? null,
+                url_foto:            tecnico.url_foto ?? null,
                 id_ciudad:           tecnico.Ciudad?.id_ciudad ?? null,
                 ciudad_base:         tecnico.Ciudad?.nombre_ciudad ?? null,
                 ciudades_operacion:  tecnico.ciudades_operacion?.map(c => ({
@@ -582,6 +587,26 @@ export const obtenerPerfilTecnico = async (req, res) => {
  *                 type: boolean
  *                 example: true
  *                 description: "Toggle de jornada: true = disponible para servicios inmediatos, false = fuera de jornada"
+ *               radio_cobertura_km:
+ *                 type: integer
+ *                 minimum: 1
+ *                 maximum: 100
+ *                 example: 15
+ *                 description: "Radio de cobertura en kilómetros (1-100)"
+ *               latitud:
+ *                 type: number
+ *                 format: double
+ *                 minimum: -90
+ *                 maximum: 90
+ *                 example: 3.4516
+ *                 description: "Latitud GPS del técnico. Requiere longitud. Se usa para búsquedas PostGIS."
+ *               longitud:
+ *                 type: number
+ *                 format: double
+ *                 minimum: -180
+ *                 maximum: 180
+ *                 example: -76.5320
+ *                 description: "Longitud GPS del técnico. Requiere latitud. Se usa para búsquedas PostGIS."
  *           examples:
  *             toggle_disponibilidad:
  *               summary: Iniciar jornada (disponible para servicios inmediatos)
@@ -591,6 +616,12 @@ export const obtenerPerfilTecnico = async (req, res) => {
  *               summary: Terminar jornada
  *               value:
  *                 disponible_inmediato: false
+ *             activar_gps:
+ *               summary: Activar ubicación GPS (técnico validado inicia jornada)
+ *               value:
+ *                 latitud: 3.4516
+ *                 longitud: -76.5320
+ *                 disponible_inmediato: true
  *             solo_telefono:
  *               summary: Actualizar solo teléfono
  *               value:
@@ -632,6 +663,20 @@ export const obtenerPerfilTecnico = async (req, res) => {
  *                     disponible_inmediato:
  *                       type: boolean
  *                       example: true
+ *                     radio_cobertura_km:
+ *                       type: integer
+ *                       example: 15
+ *                     ubicacion_base:
+ *                       type: object
+ *                       nullable: true
+ *                       description: "Coordenadas GPS del técnico (null si no ha activado GPS)"
+ *                       properties:
+ *                         latitud:
+ *                           type: number
+ *                           example: 3.4516
+ *                         longitud:
+ *                           type: number
+ *                           example: -76.5320
  *       400:
  *         $ref: '#/components/responses/ValidationError'
  *       401:
@@ -667,15 +712,15 @@ export const actualizarPerfilTecnico = async (req, res) => {
         // ----------------------------------------------------------------
         // 2. Extraer únicamente los campos editables del body
         // ----------------------------------------------------------------
-        const { telefono, correo_electronico, id_ciudad, disponible_inmediato, radio_cobertura_km } = req.body;
+        const { telefono, correo_electronico, id_ciudad, disponible_inmediato, radio_cobertura_km, latitud, longitud } = req.body;
 
         // ----------------------------------------------------------------
         // 3. Verificar que al menos un campo editable fue enviado
         // ----------------------------------------------------------------
-        if (!telefono && !correo_electronico && id_ciudad === undefined && disponible_inmediato === undefined && radio_cobertura_km === undefined) {
+        if (!telefono && !correo_electronico && id_ciudad === undefined && disponible_inmediato === undefined && radio_cobertura_km === undefined && latitud === undefined && longitud === undefined) {
             await t.rollback();
             throw new ValidationError('Error de validación', [
-                'Debe enviar al menos un campo para actualizar: telefono, correo_electronico, id_ciudad, disponible_inmediato o radio_cobertura_km',
+                'Debe enviar al menos un campo para actualizar: telefono, correo_electronico, id_ciudad, disponible_inmediato, radio_cobertura_km, latitud o longitud',
             ]);
         }
 
@@ -709,6 +754,22 @@ export const actualizarPerfilTecnico = async (req, res) => {
             const radioNum = Number(radio_cobertura_km);
             if (!Number.isInteger(radioNum) || radioNum < 1 || radioNum > 100) {
                 erroresFormato.push('El campo radio_cobertura_km debe ser un entero entre 1 y 100');
+            }
+        }
+
+        // Latitud y longitud deben enviarse juntas
+        if ((latitud !== undefined) !== (longitud !== undefined)) {
+            erroresFormato.push('Los campos latitud y longitud deben enviarse juntos');
+        }
+
+        if (latitud !== undefined && longitud !== undefined) {
+            const latNum = parseFloat(latitud);
+            const lngNum = parseFloat(longitud);
+            if (isNaN(latNum) || latNum < -90 || latNum > 90) {
+                erroresFormato.push('La latitud debe ser un número entre -90 y 90');
+            }
+            if (isNaN(lngNum) || lngNum < -180 || lngNum > 180) {
+                erroresFormato.push('La longitud debe ser un número entre -180 y 180');
             }
         }
 
@@ -770,6 +831,12 @@ export const actualizarPerfilTecnico = async (req, res) => {
         if (id_ciudad !== undefined)            camposTecnico.ciudad_base = Number(id_ciudad);
         if (disponible_inmediato !== undefined)  camposTecnico.disponible_inmediato = disponible_inmediato;
         if (radio_cobertura_km !== undefined)    camposTecnico.radio_cobertura_km = Number(radio_cobertura_km);
+        if (latitud !== undefined && longitud !== undefined) {
+            camposTecnico.ubicacion_base = {
+                type: 'Point',
+                coordinates: [parseFloat(longitud), parseFloat(latitud)],
+            };
+        }
 
         if (Object.keys(camposTecnico).length > 0) {
             await Tecnico.update(camposTecnico, {
@@ -800,6 +867,12 @@ export const actualizarPerfilTecnico = async (req, res) => {
             `actualizarPerfilTecnico: Perfil actualizado para id_usuario ${req.usuario.id_usuario} — campos: ${cambiados.join(', ')}`
         );
 
+        // Extraer coordenadas de ubicacion_base para la respuesta
+        const ubicacionBase = tecnicoActualizado?.ubicacion_base;
+        const ubicacionResp = ubicacionBase?.coordinates
+            ? { latitud: ubicacionBase.coordinates[1], longitud: ubicacionBase.coordinates[0] }
+            : null;
+
         return res.status(200).json({
             success: true,
             message: 'Perfil actualizado exitosamente',
@@ -810,6 +883,7 @@ export const actualizarPerfilTecnico = async (req, res) => {
                 ciudad_base:          tecnicoActualizado?.Ciudad?.nombre_ciudad ?? null,
                 disponible_inmediato: tecnicoActualizado?.disponible_inmediato ?? null,
                 radio_cobertura_km:   tecnicoActualizado?.radio_cobertura_km ?? null,
+                ubicacion_base:       ubicacionResp,
             },
         });
 
@@ -1135,10 +1209,6 @@ export const obtenerTecnicosPendientes = async (req, res) => {
  *                             type: string
  *                             example: "3 años reparando tuberías en viviendas residenciales"
  *                             nullable: true
- *                           precio_estimado:
- *                             type: number
- *                             example: 80000
- *                             nullable: true
  *       400:
  *         $ref: '#/components/responses/ValidationError'
  *       401:
@@ -1198,7 +1268,7 @@ export const obtenerDetalleTecnico = async (req, res) => {
                     as:      'especialidades',
                     through: {
                         model:      Especialidad,
-                        attributes: ['experiencia', 'precio_estimado'],
+                        attributes: ['experiencia'],
                     },
                     include: [
                         {
@@ -1259,7 +1329,6 @@ export const obtenerDetalleTecnico = async (req, res) => {
                     nombre_subcategoria: s.nombre,
                     nombre_categoria:    s.Categoria?.nombre      ?? null,
                     experiencia:         s.Especialidad?.experiencia    ?? null,
-                    precio_estimado:     s.Especialidad?.precio_estimado ?? null,
                 })),
             },
         });

@@ -33,9 +33,12 @@ const mockHandleError = jest.fn((res, error) => {
 
 const mockLogger = { info: jest.fn(), error: jest.fn(), warn: jest.fn() };
 
+const mockSocketEmitter = { emitNuevaSolicitud: jest.fn() };
+
 jest.unstable_mockModule('../../../models/index.js', () => mockModels);
 jest.unstable_mockModule('../../../utils/errorHandler.js', () => ({ handleError: mockHandleError }));
 jest.unstable_mockModule('../../../utils/logger.js', () => ({ default: mockLogger }));
+jest.unstable_mockModule('../../../sockets/services/socketEmitter.js', () => mockSocketEmitter);
 
 const { ValidationError, NotFoundError, ForbiddenError } =
   await import('../../../utils/errors/AppError.js');
@@ -226,6 +229,29 @@ describe('solicitudController', () => {
       const err = mockHandleError.mock.calls[0][1];
       expect(err).toBeInstanceOf(ValidationError);
     });
+
+    it('debe crear solicitud programada con técnicos notificados → 201', async () => {
+      req.usuario = { id_usuario: 5 };
+      const futureDate = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+      req.body = { ...VALID_INMEDIATA, fecha_programada: futureDate };
+
+      const tecnicos = [{ id_tecnico: 2, id_usuario: 8, prom_calificacion: 4.0, distancia_metros: 2000 }];
+      mockModels.Subcategoria.findByPk.mockResolvedValue({ id_subcategoria: 1 });
+      mockModels.Cliente.findOne.mockResolvedValue({ id_cliente: 3 });
+      mockModels.sequelize.query.mockResolvedValue(tecnicos);
+      mockModels.Solicitud.create.mockResolvedValue({
+        id_solicitud: 18, tipo_servicio: 'PROGRAMADO', id_estado: 2,
+        prioridad: 'URGENTE', id_subcategoria: 1, fecha_solicitud: new Date(), createdAt: new Date(),
+      });
+      mockModels.Cita.create.mockResolvedValue({ id_cita: 10, fecha_cita: futureDate, id_estado: 1 });
+      mockModels.TecnicoSolicitudQueue.bulkCreate.mockResolvedValue([]);
+
+      await crearSolicitudProgramada(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(mockModels.TecnicoSolicitudQueue.bulkCreate).toHaveBeenCalled();
+      expect(mockSocketEmitter.emitNuevaSolicitud).toHaveBeenCalled();
+    });
   });
 
   // =====================================================================
@@ -310,6 +336,46 @@ describe('solicitudController', () => {
         id_solicitud: 15, id_cliente: 99, id_tecnico: null, tecnicos_notificados: [],
       });
       mockModels.Cliente.findOne.mockResolvedValue({ id_cliente: 3 }); // different from 99
+
+      await obtenerSolicitudPorId(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ForbiddenError);
+    });
+
+    it('debe retornar solicitud como cliente propietario → 200', async () => {
+      req.usuario = { id_usuario: 5, rol: 'CLIENTE' };
+      req.params = { id: '15' };
+      mockModels.Solicitud.findByPk.mockResolvedValue({
+        id_solicitud: 15, id_cliente: 3, id_tecnico: null, tecnicos_notificados: [],
+      });
+      mockModels.Cliente.findOne.mockResolvedValue({ id_cliente: 3 }); // mismo id_cliente
+
+      await obtenerSolicitudPorId(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    it('debe retornar solicitud como técnico asignado → 200', async () => {
+      req.usuario = { id_usuario: 10, rol: 'TECNICO' };
+      req.params = { id: '15' };
+      mockModels.Solicitud.findByPk.mockResolvedValue({
+        id_solicitud: 15, id_cliente: 3, id_tecnico: 5, tecnicos_notificados: [],
+      });
+      mockModels.Tecnico.findOne.mockResolvedValue({ id_tecnico: 5 }); // mismo id_tecnico
+
+      await obtenerSolicitudPorId(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    it('debe retornar 403 si técnico no es el asignado', async () => {
+      req.usuario = { id_usuario: 99, rol: 'TECNICO' };
+      req.params = { id: '15' };
+      mockModels.Solicitud.findByPk.mockResolvedValue({
+        id_solicitud: 15, id_cliente: 3, id_tecnico: 5, tecnicos_notificados: [],
+      });
+      mockModels.Tecnico.findOne.mockResolvedValue({ id_tecnico: 7 }); // diferente
 
       await obtenerSolicitudPorId(req, res);
 

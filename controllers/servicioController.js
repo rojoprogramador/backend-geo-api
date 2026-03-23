@@ -259,6 +259,26 @@ export const iniciarServicio = async (req, res) => {
 
         await t.commit();
 
+        // ── WebSocket: notificar al cliente que el servicio inició (best-effort) ──
+        try {
+            const { emitServicioIniciado } = await import('../sockets/services/socketEmitter.js');
+            const clienteServicio = await Cliente.findByPk(solicitud.id_cliente, { attributes: ['id_usuario'] });
+            if (clienteServicio?.id_usuario) {
+                emitServicioIniciado({
+                    id_solicitud: idSolicitud,
+                    id_cliente_usuario: clienteServicio.id_usuario,
+                    servicioData: {
+                        id_servicio:  nuevoServicio.id_servicio,
+                        id_solicitud: idSolicitud,
+                        id_tecnico:   tecnico.id_tecnico,
+                        id_estado:    nuevoServicio.id_estado,
+                    },
+                });
+            }
+        } catch (wsErr) {
+            logger.warn(`iniciarServicio: WebSocket emit falló (no-crítico): ${wsErr.message}`);
+        }
+
         return res.status(201).json({
             success: true,
             message: 'Servicio iniciado exitosamente',
@@ -652,6 +672,27 @@ export const finalizarServicio = async (req, res) => {
         );
 
         await t.commit();
+
+        // ── WebSocket: notificar al cliente que el servicio finalizó (best-effort) ──
+        try {
+            const { emitServicioFinalizado } = await import('../sockets/services/socketEmitter.js');
+            const clienteFinal = await Cliente.findByPk(servicio.id_cliente, { attributes: ['id_usuario'] });
+            if (clienteFinal?.id_usuario) {
+                emitServicioFinalizado({
+                    id_solicitud: servicio.id_solicitud,
+                    id_cliente_usuario: clienteFinal.id_usuario,
+                    servicioData: {
+                        id_servicio:  idServicio,
+                        id_solicitud: servicio.id_solicitud,
+                        id_tecnico:   tecnico.id_tecnico,
+                        id_estado:    ESTADO_COMPLETADA,
+                        valor_total:  valorTotalFinal,
+                    },
+                });
+            }
+        } catch (wsErr) {
+            logger.warn(`finalizarServicio: WebSocket emit falló (no-crítico): ${wsErr.message}`);
+        }
 
         logger.info(
             `finalizarServicio: Servicio id=${idServicio} COMPLETADO — técnico id=${tecnico.id_tecnico} — saldo_pendiente +${montoTecnico} COP`

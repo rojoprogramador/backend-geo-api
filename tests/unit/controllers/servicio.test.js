@@ -7,7 +7,7 @@ const mockModels = {
   Servicio: { findOne: jest.fn(), findByPk: jest.fn(), findAndCountAll: jest.fn(), create: jest.fn(), update: jest.fn() },
   Solicitud: { findByPk: jest.fn(), update: jest.fn() },
   Cotizacion: {},
-  Cliente: { findOne: jest.fn() },
+  Cliente: { findOne: jest.fn(), findByPk: jest.fn() },
   Tecnico: { findOne: jest.fn() },
   Subcategoria: {},
   EstadoSolicitud: {},
@@ -15,6 +15,11 @@ const mockModels = {
   Transaccion: { create: jest.fn() },
   CuentaTecnico: { findOrCreate: jest.fn(), findOne: jest.fn() },
   Usuario: {},
+};
+
+const mockSocketEmitter = {
+  emitServicioIniciado:   jest.fn(),
+  emitServicioFinalizado: jest.fn(),
 };
 
 const mockTransaction = { commit: jest.fn(), rollback: jest.fn(), finished: undefined };
@@ -36,6 +41,7 @@ jest.unstable_mockModule('../../../models/index.js', () => mockModels);
 jest.unstable_mockModule('../../../utils/errorHandler.js', () => ({ handleError: mockHandleError }));
 jest.unstable_mockModule('../../../utils/logger.js', () => ({ default: mockLogger }));
 jest.unstable_mockModule('sequelize', () => ({ Op: mockOp }));
+jest.unstable_mockModule('../../../sockets/services/socketEmitter.js', () => mockSocketEmitter);
 
 const { ValidationError, NotFoundError, ForbiddenError, ConflictError } =
   await import('../../../utils/errors/AppError.js');
@@ -189,6 +195,54 @@ describe('servicioController', () => {
 
       const err = mockHandleError.mock.calls[0][1];
       expect(err).toBeInstanceOf(ConflictError);
+    });
+
+    it('debe emitir WebSocket al iniciar servicio cuando cliente encontrado → 201', async () => {
+      req.params = { id_solicitud: '15' };
+      req.usuario = { id_usuario: 10 };
+
+      mockModels.Tecnico.findOne.mockResolvedValue({ id_tecnico: 5 });
+      mockModels.Solicitud.findByPk.mockResolvedValue({
+        id_solicitud: 15, id_tecnico: 5, id_cliente: 3, id_subcategoria: 2,
+        id_estado: 4, estado: { descripcion: 'ASIGNADA' },
+      });
+      mockModels.Servicio.findOne.mockResolvedValue(null);
+      mockModels.Servicio.create.mockResolvedValue({
+        id_servicio: 9, id_solicitud: 15, id_cliente: 3, id_tecnico: 5,
+        id_subcategoria: 2, id_estado: 5, valor_total: 0,
+      });
+      mockModels.Solicitud.update.mockResolvedValue([1]);
+      mockModels.CuentaTecnico.findOrCreate.mockResolvedValue([{ id_cuenta: 1 }, false]);
+      mockModels.Cliente.findByPk.mockResolvedValue({ id_usuario: 15 }); // cliente con id_usuario
+
+      await iniciarServicio(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(mockSocketEmitter.emitServicioIniciado).toHaveBeenCalled();
+    });
+
+    it('debe omitir WebSocket cuando Cliente.findByPk devuelve null → 201', async () => {
+      req.params = { id_solicitud: '16' };
+      req.usuario = { id_usuario: 10 };
+
+      mockModels.Tecnico.findOne.mockResolvedValue({ id_tecnico: 5 });
+      mockModels.Solicitud.findByPk.mockResolvedValue({
+        id_solicitud: 16, id_tecnico: 5, id_cliente: 4, id_subcategoria: 2,
+        id_estado: 4, estado: { descripcion: 'ASIGNADA' },
+      });
+      mockModels.Servicio.findOne.mockResolvedValue(null);
+      mockModels.Servicio.create.mockResolvedValue({
+        id_servicio: 10, id_solicitud: 16, id_cliente: 4, id_tecnico: 5,
+        id_subcategoria: 2, id_estado: 5, valor_total: 0,
+      });
+      mockModels.Solicitud.update.mockResolvedValue([1]);
+      mockModels.CuentaTecnico.findOrCreate.mockResolvedValue([{ id_cuenta: 2 }, false]);
+      mockModels.Cliente.findByPk.mockResolvedValue(null); // no emit
+
+      await iniciarServicio(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(mockSocketEmitter.emitServicioIniciado).not.toHaveBeenCalled();
     });
   });
 
@@ -382,6 +436,34 @@ describe('servicioController', () => {
 
       const err = mockHandleError.mock.calls[0][1];
       expect(err).toBeInstanceOf(ValidationError);
+    });
+
+    it('debe emitir WebSocket al finalizar servicio cuando cliente encontrado → 200', async () => {
+      req.params = { id: '8' };
+      req.body = { id_medioPago: 1, valor_total: 200000 };
+      req.usuario = { id_usuario: 10 };
+
+      const mockCuenta = { increment: jest.fn() };
+      mockModels.Tecnico.findOne.mockResolvedValue({ id_tecnico: 5 });
+      mockModels.Servicio.findByPk.mockResolvedValue({
+        id_servicio: 8, id_solicitud: 15, id_tecnico: 5, id_cliente: 3, id_estado: 5,
+        estado: { descripcion: 'EN_PROCESO' },
+        solicitud_origen: { id_solicitud: 15, id_estado: 5, cotizaciones: [] },
+      });
+      mockModels.MedioPago.findByPk.mockResolvedValue({ id_medioPago: 1, descripcion: 'EFECTIVO' });
+      mockModels.Servicio.update.mockResolvedValue([1]);
+      mockModels.Solicitud.update.mockResolvedValue([1]);
+      mockModels.Transaccion.create.mockResolvedValue({
+        id_transaccion: 8, monto_total: 200000, comision_plataforma: 30000,
+        monto_tecnico: 170000, metodo_cobro: 'PLATAFORMA', estado_pago: 'PENDIENTE',
+      });
+      mockModels.CuentaTecnico.findOne.mockResolvedValue(mockCuenta);
+      mockModels.Cliente.findByPk.mockResolvedValue({ id_usuario: 15 }); // cliente con id_usuario
+
+      await finalizarServicio(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(mockSocketEmitter.emitServicioFinalizado).toHaveBeenCalled();
     });
 
     it('debe retornar 404 si CuentaTecnico no encontrada', async () => {

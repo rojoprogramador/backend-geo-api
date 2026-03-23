@@ -160,6 +160,43 @@ router.get('/perfil', verifyToken, obtenerPerfilTecnico);
 router.put('/perfil', verifyToken, actualizarPerfilTecnico);
 
 // -----------------------------------------------------------------------
+// RUTAS DE ESPECIALIDADES — Gestión de servicios del técnico
+// IMPORTANTE: declaradas ANTES de /:id para que Express no interprete
+// "especialidades" como un valor del parámetro dinámico.
+// -----------------------------------------------------------------------
+
+// POST /api/tecnicos/especialidades — Agregar especialidad al perfil
+router.post('/especialidades', verifyToken, permitirRoles('TECNICO'), agregarEspecialidad);
+
+// GET  /api/tecnicos/especialidades — Listar especialidades del técnico
+router.get('/especialidades', verifyToken, permitirRoles('TECNICO'), obtenerMisEspecialidades);
+
+// DELETE /api/tecnicos/especialidades/:id — Eliminar especialidad
+router.delete('/especialidades/:id', verifyToken, permitirRoles('TECNICO'), eliminarEspecialidad);
+
+// -----------------------------------------------------------------------
+// RUTA DE FOTO DE PERFIL — Upload de imagen
+// -----------------------------------------------------------------------
+
+// POST /api/tecnicos/foto — Subir foto de perfil (multipart/form-data)
+router.post('/foto', verifyToken, uploadFoto.single('foto'), uploadFotoPerfil);
+
+// -----------------------------------------------------------------------
+// RUTAS DE CIUDADES DE OPERACIÓN — Zonas donde presta servicios
+// IMPORTANTE: declaradas ANTES de /:id para que Express no interprete
+// "ciudades" como un valor del parámetro dinámico.
+// -----------------------------------------------------------------------
+
+// POST /api/tecnicos/ciudades — Agregar ciudad de operación
+router.post('/ciudades', verifyToken, permitirRoles('TECNICO'), agregarCiudadOperacion);
+
+// GET  /api/tecnicos/ciudades — Listar ciudades de operación
+router.get('/ciudades', verifyToken, permitirRoles('TECNICO'), obtenerMisCiudades);
+
+// DELETE /api/tecnicos/ciudades/:id — Eliminar ciudad de operación
+router.delete('/ciudades/:id', verifyToken, permitirRoles('TECNICO'), eliminarCiudadOperacion);
+
+// -----------------------------------------------------------------------
 // RUTAS DE ADMINISTRACIÓN — HU-24 y HU-25
 // IMPORTANTE: las rutas estáticas (/pendientes, /admin/todos) DEBEN declararse ANTES
 // que las rutas con parámetro dinámico (/:id) para que Express no
@@ -180,38 +217,5 @@ router.put('/:id/aprobar', verifyToken, permitirRoles('ADMIN'), aprobarTecnico);
 
 // PUT  /api/tecnicos/:id/rechazar — Rechazar técnico (Admin)
 router.put('/:id/rechazar', verifyToken, permitirRoles('ADMIN'), rechazarTecnico);
-
-// -----------------------------------------------------------------------
-// RUTAS DE ESPECIALIDADES — Gestión de servicios del técnico
-// -----------------------------------------------------------------------
-
-// POST /api/tecnicos/especialidades — Agregar especialidad al perfil
-router.post('/especialidades', verifyToken, agregarEspecialidad);
-
-// GET  /api/tecnicos/especialidades — Listar especialidades del técnico
-router.get('/especialidades', verifyToken, obtenerMisEspecialidades);
-
-// DELETE /api/tecnicos/especialidades/:id — Eliminar especialidad
-router.delete('/especialidades/:id', verifyToken, eliminarEspecialidad);
-
-// -----------------------------------------------------------------------
-// RUTA DE FOTO DE PERFIL — Upload de imagen
-// -----------------------------------------------------------------------
-
-// POST /api/tecnicos/foto — Subir foto de perfil (multipart/form-data)
-router.post('/foto', verifyToken, uploadFoto.single('foto'), uploadFotoPerfil);
-
-// -----------------------------------------------------------------------
-// RUTAS DE CIUDADES DE OPERACIÓN — Zonas donde presta servicios
-// -----------------------------------------------------------------------
-
-// POST /api/tecnicos/ciudades — Agregar ciudad de operación
-router.post('/ciudades', verifyToken, agregarCiudadOperacion);
-
-// GET  /api/tecnicos/ciudades — Listar ciudades de operación
-router.get('/ciudades', verifyToken, obtenerMisCiudades);
-
-// DELETE /api/tecnicos/ciudades/:id — Eliminar ciudad de operación
-router.delete('/ciudades/:id', verifyToken, eliminarCiudadOperacion);
 
 export default router;

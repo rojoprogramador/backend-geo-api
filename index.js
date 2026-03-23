@@ -1,8 +1,10 @@
 import express from 'express';
+import { createServer } from 'node:http';
 import cors from 'cors';
 import swaggerUi from 'swagger-ui-express';
 import { sequelize } from './models/index.js';
 import { swaggerSpec } from './docs/swagger/swagger.js';
+import { initializeSocket } from './sockets/index.js';
 
 // 2. IMPORTAMOS LAS RUTAS
 import usuarioRoutes from './routes/usuarioRoutes.js';
@@ -90,11 +92,15 @@ async function main() {
         //sincronizar modelos
         //await sequelize.sync({ force: false });
         // console.log('✅ Tablas sincronizadas correctamente ✅');
-        //Iniciar servidor
-        app.listen(PORT, () =>{
+        //Iniciar servidor HTTP + WebSocket
+        const httpServer = createServer(app);
+        initializeSocket(httpServer, corsOptions);
+
+        httpServer.listen(PORT, () =>{
             console.log(`🚀 Servidor corriendo en http://localhost:${PORT} 🚀`);
             console.log(`📚 Documentación Swagger en http://localhost:${PORT}/api-docs`);
-        }); 
+            console.log(`🔌 WebSocket disponible en ws://localhost:${PORT}`);
+        });
     } catch (error) {
         console.error('❌ error al iniciar el servidor: ❌', error);
     }
