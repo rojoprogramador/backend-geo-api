@@ -160,29 +160,9 @@ router.get('/perfil', verifyToken, obtenerPerfilTecnico);
 router.put('/perfil', verifyToken, actualizarPerfilTecnico);
 
 // -----------------------------------------------------------------------
-// RUTAS DE ADMINISTRACIÓN — HU-24 y HU-25
-// IMPORTANTE: las rutas estáticas (/pendientes, /admin/todos) DEBEN declararse ANTES
-// que las rutas con parámetro dinámico (/:id) para que Express no
-// interprete la cadena "pendientes" o "admin" como un valor de :id.
-// -----------------------------------------------------------------------
-
-// GET  /api/tecnicos/pendientes — Lista técnicos con PENDIENTE_VALIDACION (Admin)
-router.get('/pendientes', verifyToken, permitirRoles('ADMIN'), obtenerTecnicosPendientes);
-
-// GET  /api/tecnicos/admin/todos — Lista TODOS los técnicos con paginación y filtro (Admin)
-router.get('/admin/todos', verifyToken, permitirRoles('ADMIN'), obtenerTodosTecnicos);
-
-// GET  /api/tecnicos/:id — Perfil completo de un técnico para revisión (Admin)
-router.get('/:id', verifyToken, permitirRoles('ADMIN'), obtenerDetalleTecnico);
-
-// PUT  /api/tecnicos/:id/aprobar — Aprobar técnico (Admin)
-router.put('/:id/aprobar', verifyToken, permitirRoles('ADMIN'), aprobarTecnico);
-
-// PUT  /api/tecnicos/:id/rechazar — Rechazar técnico (Admin)
-router.put('/:id/rechazar', verifyToken, permitirRoles('ADMIN'), rechazarTecnico);
-
-// -----------------------------------------------------------------------
 // RUTAS DE ESPECIALIDADES — Gestión de servicios del técnico
+// IMPORTANTE: declaradas ANTES de /:id para que Express no interprete
+// "especialidades" como un valor del parámetro dinámico.
 // -----------------------------------------------------------------------
 
 // POST /api/tecnicos/especialidades — Agregar especialidad al perfil
@@ -203,15 +183,39 @@ router.post('/foto', verifyToken, uploadFoto.single('foto'), uploadFotoPerfil);
 
 // -----------------------------------------------------------------------
 // RUTAS DE CIUDADES DE OPERACIÓN — Zonas donde presta servicios
+// IMPORTANTE: declaradas ANTES de /:id para que Express no interprete
+// "ciudades" como un valor del parámetro dinámico.
 // -----------------------------------------------------------------------
 
 // POST /api/tecnicos/ciudades — Agregar ciudad de operación
-router.post('/ciudades', verifyToken, agregarCiudadOperacion);
+router.post('/ciudades', verifyToken, permitirRoles('TECNICO'), agregarCiudadOperacion);
 
 // GET  /api/tecnicos/ciudades — Listar ciudades de operación
-router.get('/ciudades', verifyToken, obtenerMisCiudades);
+router.get('/ciudades', verifyToken, permitirRoles('TECNICO'), obtenerMisCiudades);
 
 // DELETE /api/tecnicos/ciudades/:id — Eliminar ciudad de operación
-router.delete('/ciudades/:id', verifyToken, eliminarCiudadOperacion);
+router.delete('/ciudades/:id', verifyToken, permitirRoles('TECNICO'), eliminarCiudadOperacion);
+
+// -----------------------------------------------------------------------
+// RUTAS DE ADMINISTRACIÓN — HU-24 y HU-25
+// IMPORTANTE: las rutas estáticas (/pendientes, /admin/todos) DEBEN declararse ANTES
+// que las rutas con parámetro dinámico (/:id) para que Express no
+// interprete la cadena "pendientes" o "admin" como un valor de :id.
+// -----------------------------------------------------------------------
+
+// GET  /api/tecnicos/pendientes — Lista técnicos con PENDIENTE_VALIDACION (Admin)
+router.get('/pendientes', verifyToken, permitirRoles('ADMIN'), obtenerTecnicosPendientes);
+
+// GET  /api/tecnicos/admin/todos — Lista TODOS los técnicos con paginación y filtro (Admin)
+router.get('/admin/todos', verifyToken, permitirRoles('ADMIN'), obtenerTodosTecnicos);
+
+// GET  /api/tecnicos/:id — Perfil completo de un técnico para revisión (Admin)
+router.get('/:id', verifyToken, permitirRoles('ADMIN'), obtenerDetalleTecnico);
+
+// PUT  /api/tecnicos/:id/aprobar — Aprobar técnico (Admin)
+router.put('/:id/aprobar', verifyToken, permitirRoles('ADMIN'), aprobarTecnico);
+
+// PUT  /api/tecnicos/:id/rechazar — Rechazar técnico (Admin)
+router.put('/:id/rechazar', verifyToken, permitirRoles('ADMIN'), rechazarTecnico);
 
 export default router;
