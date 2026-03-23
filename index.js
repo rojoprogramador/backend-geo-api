@@ -20,7 +20,7 @@ import servicioRoutes from './routes/servicioRoutes.js';
 import ciudadRoutes from './routes/ciudadRoutes.js';
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 // Middlewares
 const corsOptions = {
@@ -68,13 +68,22 @@ app.use('/api/calificaciones', calificacionRoutes);
 app.use('/api/servicios', servicioRoutes);
 app.use('/api/ciudades', ciudadRoutes);
 
-// 4. RUTA DE PRUEBA
-app.get('/', (req, res) => {
+// Health check (Docker healthcheck + monitoreo)
+app.get('/health', async (_req, res) => {
+    try {
+        await sequelize.authenticate();
+        res.json({ status: 'ok', db: 'connected', timestamp: new Date().toISOString() });
+    } catch {
+        res.status(503).json({ status: 'error', db: 'disconnected', timestamp: new Date().toISOString() });
+    }
+});
+
+// Ruta raíz
+app.get('/', (_req, res) => {
     res.json({
-        message: '¡Bienvenido a Geo-API!',
+        message: 'Geo-API',
         version: '1.0.0',
-        docs: `http://localhost:${PORT}/api-docs`,
-        status: 'online'
+        status: 'online',
     });
 });
 

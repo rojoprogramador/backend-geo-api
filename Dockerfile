@@ -1,44 +1,31 @@
-# ==========================================
-# DOCKERFILE PARA GEO-API
-# ==========================================
-
-# 1. IMAGEN BASE
-# Usamos Node.js versión 20 en Alpine Linux (muy ligera, ~40MB)
-# Alpine es una distribución minimalista de Linux perfecta para contenedores
 FROM node:20-alpine
 
-# 2. METADATA
-# Información sobre quién mantiene esta imagen
-LABEL maintainer="tu_email@ejemplo.com"
-LABEL description="API de geolocalización con Node.js y PostGIS"
+LABEL description="Geo-API — Node.js + PostGIS"
 
-# 3. DIRECTORIO DE TRABAJO
-# Dentro del contenedor, creamos la carpeta /app y trabajamos ahí
-# Es como hacer "cd /app" pero permanente
 WORKDIR /app
 
-# 4. COPIAR ARCHIVOS DE DEPENDENCIAS PRIMERO
-# ¿Por qué primero? Docker usa CACHE por capas
-# Si solo cambias código (no package.json), no reinstala todo
-# Esto hace las builds MUY rápidas
+# Instalar curl para healthcheck
+RUN apk add --no-cache curl
+
+# Copiar dependencias primero (caché de capas Docker)
 COPY package*.json ./
 
-# 5. INSTALAR DEPENDENCIAS
-# Dentro del contenedor, ejecuta npm install
-# Aquí se crean los node_modules del contenedor
-RUN npm install
+# Instalar solo dependencias de producción
+RUN npm ci --omit=dev && npm cache clean --force
 
-# 6. COPIAR EL RESTO DEL CÓDIGO
-# Ahora sí, copiamos todo tu código fuente
-# Esto va después para aprovechar el caché de npm install
+# Copiar código fuente
 COPY . .
 
-# 7. EXPONER EL PUERTO
-# Le decimos a Docker que nuestra app usa el puerto 3000
-# (No lo publica, solo documenta)
+# Crear directorio de uploads con permisos
+RUN mkdir -p uploads/fotos && chown -R node:node /app
+
+# Usuario no-root
+USER node
+
 EXPOSE 3000
 
-# 8. COMANDO POR DEFECTO
-# Cuando el contenedor arranca, ejecuta esto
-# Es como escribir "node index.js" en la terminal
+# Healthcheck cada 30s
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:3000/health || exit 1
+
 CMD ["node", "index.js"]
