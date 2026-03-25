@@ -105,12 +105,12 @@ export const login = async ( req, res ) => {
         });
 
         if (!usuario) {
-            return  res.status(401).json({ message: 'Credenciales inválidas, usuario no encontrado' });
+            return  res.status(401).json({ success: false, message: 'Credenciales inválidas, usuario no encontrado' });
         }
         // 3. Comparar la contraseña proporcionada con la almacenada
         const isPasswordValid = await bcrypt.compare(contraseña, usuario.contraseña);
         if (!isPasswordValid) {
-            return res.status(401).json({ message: 'Credenciales inválidas, contraseña incorrecta' });
+            return res.status(401).json({ success: false, message: 'Credenciales inválidas, contraseña incorrecta' });
         }
         // 4. Generar un token JWT si las credenciales son válidas
         // el token guardará el id y el rol del usuario dentro de su payload
@@ -146,7 +146,7 @@ export const login = async ( req, res ) => {
         });
     } catch (error) {
         console.error('Error durante el login:', error);
-        res.status(500).json({ message: 'Error interno del servidor durante el login' });
+        res.status(500).json({ success: false, message: 'Error interno del servidor durante el login' });
     }
 };
 

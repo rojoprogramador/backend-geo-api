@@ -325,12 +325,14 @@ export const crearSolicitudInmediata = async (req, res) => {
                 emitNuevaSolicitud({
                     id_solicitud: nuevaSolicitud.id_solicitud,
                     solicitudData: {
-                        id_solicitud:    nuevaSolicitud.id_solicitud,
-                        tipo_servicio:   'INMEDIATO',
+                        id_solicitud:      nuevaSolicitud.id_solicitud,
+                        id_cliente:        cliente.id_cliente,
+                        id_subcategoria:   Number(id_subcategoria),
+                        subcategoria:      subcategoria.nombre,
+                        descripcion:       descTrimmed,
+                        tipo_solicitud:    'INMEDIATA',
                         prioridad,
-                        descripcion:     descTrimmed,
-                        id_subcategoria: Number(id_subcategoria),
-                        fecha_solicitud: nuevaSolicitud.createdAt,
+                        direccion_servicio: null,
                     },
                     tecnicos: tecnicosEncontrados.map((tec) => ({
                         id_tecnico:       tec.id_tecnico,
@@ -652,13 +654,15 @@ export const crearSolicitudProgramada = async (req, res) => {
                 emitNuevaSolicitud({
                     id_solicitud: nuevaSolicitud.id_solicitud,
                     solicitudData: {
-                        id_solicitud:    nuevaSolicitud.id_solicitud,
-                        tipo_servicio:   'PROGRAMADO',
+                        id_solicitud:      nuevaSolicitud.id_solicitud,
+                        id_cliente:        cliente.id_cliente,
+                        id_subcategoria:   Number(id_subcategoria),
+                        subcategoria:      subcategoria.nombre,
+                        descripcion:       descTrimmed,
+                        tipo_solicitud:    'PROGRAMADA',
                         prioridad,
-                        descripcion:     descTrimmed,
-                        id_subcategoria: Number(id_subcategoria),
-                        fecha_solicitud: nuevaSolicitud.createdAt,
-                        fecha_programada: fechaProgramadaDate.toISOString(),
+                        direccion_servicio: null,
+                        fecha_programada:  fechaProgramadaDate.toISOString(),
                     },
                     tecnicos: tecnicosEncontrados.map((tec) => ({
                         id_tecnico:       tec.id_tecnico,

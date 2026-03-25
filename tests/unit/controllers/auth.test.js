@@ -244,6 +244,7 @@ describe('authController', () => {
       expect(Usuario.findOne).toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(401);
       expect(res.json).toHaveBeenCalledWith({
+        success: false,
         message: 'Credenciales inválidas, usuario no encontrado',
       });
 
@@ -286,6 +287,7 @@ describe('authController', () => {
 
       expect(res.status).toHaveBeenCalledWith(401);
       expect(res.json).toHaveBeenCalledWith({
+        success: false,
         message: 'Credenciales inválidas, contraseña incorrecta',
       });
 
@@ -322,6 +324,7 @@ describe('authController', () => {
 
       expect(res.status).toHaveBeenCalledWith(500);
       expect(res.json).toHaveBeenCalledWith({
+        success: false,
         message: 'Error interno del servidor durante el login',
       });
 
