@@ -37,6 +37,41 @@ const calcularPriorityScore = (distanciaMetros, promCalificacion) => {
 };
 
 // ---------------------------------------------------------------------------
+// Helper: notifica técnicos via WebSocket (best-effort, no lanza excepción)
+// ---------------------------------------------------------------------------
+const notificarTecnicosWS = async ({ nuevaSolicitud, cliente, id_subcategoria, subcategoria, descTrimmed, tipo_solicitud, prioridad, tecnicosEncontrados, extra = {} }) => {
+    if (tecnicosEncontrados.length === 0) return;
+    try {
+        const { emitNuevaSolicitud } = await import('../sockets/services/socketEmitter.js');
+        emitNuevaSolicitud({
+            id_solicitud: nuevaSolicitud.id_solicitud,
+            solicitudData: {
+                id_solicitud:       nuevaSolicitud.id_solicitud,
+                id_cliente:         cliente.id_cliente,
+                id_subcategoria:    Number(id_subcategoria),
+                subcategoria:       subcategoria.nombre,
+                descripcion:        descTrimmed,
+                tipo_solicitud,
+                prioridad,
+                direccion_servicio: null,
+                ...extra,
+            },
+            tecnicos: tecnicosEncontrados.map((tec) => ({
+                id_tecnico:       tec.id_tecnico,
+                id_usuario:       tec.id_usuario,
+                distancia_metros: parseFloat(tec.distancia_metros),
+                priority_score:   calcularPriorityScore(
+                    parseFloat(tec.distancia_metros),
+                    parseFloat(tec.prom_calificacion)
+                ),
+            })),
+        });
+    } catch (wsErr) {
+        logger.warn(`notificarTecnicosWS: WebSocket emit falló (no-crítico): ${wsErr.message}`);
+    }
+};
+
+// ---------------------------------------------------------------------------
 // Helper: valida campos comunes de solicitud (inmediata y programada)
 // ---------------------------------------------------------------------------
 const validarCamposSolicitud = (latitud, longitud, id_subcategoria, descripcion, prioridad) => {
@@ -319,35 +354,10 @@ export const crearSolicitudInmediata = async (req, res) => {
         await t.commit();
 
         // ── WebSocket: notificar técnicos cercanos en tiempo real (best-effort) ──
-        try {
-            if (tecnicosEncontrados.length > 0) {
-                const { emitNuevaSolicitud } = await import('../sockets/services/socketEmitter.js');
-                emitNuevaSolicitud({
-                    id_solicitud: nuevaSolicitud.id_solicitud,
-                    solicitudData: {
-                        id_solicitud:      nuevaSolicitud.id_solicitud,
-                        id_cliente:        cliente.id_cliente,
-                        id_subcategoria:   Number(id_subcategoria),
-                        subcategoria:      subcategoria.nombre,
-                        descripcion:       descTrimmed,
-                        tipo_solicitud:    'INMEDIATA',
-                        prioridad,
-                        direccion_servicio: null,
-                    },
-                    tecnicos: tecnicosEncontrados.map((tec) => ({
-                        id_tecnico:       tec.id_tecnico,
-                        id_usuario:       tec.id_usuario,
-                        distancia_metros: parseFloat(tec.distancia_metros),
-                        priority_score:   calcularPriorityScore(
-                            parseFloat(tec.distancia_metros),
-                            parseFloat(tec.prom_calificacion)
-                        ),
-                    })),
-                });
-            }
-        } catch (wsErr) {
-            logger.warn(`crearSolicitudInmediata: WebSocket emit falló (no-crítico): ${wsErr.message}`);
-        }
+        await notificarTecnicosWS({
+            nuevaSolicitud, cliente, id_subcategoria, subcategoria,
+            descTrimmed, tipo_solicitud: 'INMEDIATA', prioridad, tecnicosEncontrados,
+        });
 
         const mensajeRespuesta = tecnicosEncontrados.length > 0
             ? `Solicitud inmediata creada. ${tecnicosEncontrados.length} técnicos notificados.`
@@ -648,36 +658,11 @@ export const crearSolicitudProgramada = async (req, res) => {
         await t.commit();
 
         // ── WebSocket: notificar técnicos cercanos en tiempo real (best-effort) ──
-        try {
-            if (tecnicosEncontrados.length > 0) {
-                const { emitNuevaSolicitud } = await import('../sockets/services/socketEmitter.js');
-                emitNuevaSolicitud({
-                    id_solicitud: nuevaSolicitud.id_solicitud,
-                    solicitudData: {
-                        id_solicitud:      nuevaSolicitud.id_solicitud,
-                        id_cliente:        cliente.id_cliente,
-                        id_subcategoria:   Number(id_subcategoria),
-                        subcategoria:      subcategoria.nombre,
-                        descripcion:       descTrimmed,
-                        tipo_solicitud:    'PROGRAMADA',
-                        prioridad,
-                        direccion_servicio: null,
-                        fecha_programada:  fechaProgramadaDate.toISOString(),
-                    },
-                    tecnicos: tecnicosEncontrados.map((tec) => ({
-                        id_tecnico:       tec.id_tecnico,
-                        id_usuario:       tec.id_usuario,
-                        distancia_metros: parseFloat(tec.distancia_metros),
-                        priority_score:   calcularPriorityScore(
-                            parseFloat(tec.distancia_metros),
-                            parseFloat(tec.prom_calificacion)
-                        ),
-                    })),
-                });
-            }
-        } catch (wsErr) {
-            logger.warn(`crearSolicitudProgramada: WebSocket emit falló (no-crítico): ${wsErr.message}`);
-        }
+        await notificarTecnicosWS({
+            nuevaSolicitud, cliente, id_subcategoria, subcategoria,
+            descTrimmed, tipo_solicitud: 'PROGRAMADA', prioridad, tecnicosEncontrados,
+            extra: { fecha_programada: fechaProgramadaDate.toISOString() },
+        });
 
         const mensajeRespuesta = tecnicosEncontrados.length > 0
             ? `Solicitud programada creada. ${tecnicosEncontrados.length} técnicos notificados.`
