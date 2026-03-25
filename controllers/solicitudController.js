@@ -98,6 +98,29 @@ const validarCamposSolicitud = (latitud, longitud, id_subcategoria, descripcion,
 };
 
 // ---------------------------------------------------------------------------
+// Helper: rollback + throw ValidationError si hay errores (elimina patrón repetido)
+// ---------------------------------------------------------------------------
+const throwIfValidationErrors = async (errors, transaction) => {
+    if (errors.length === 0) return;
+    await transaction.rollback();
+    throw new ValidationError('Error de validación', errors);
+};
+
+// ---------------------------------------------------------------------------
+// Helper: verifica que la subcategoría exista (con rollback si no)
+// ---------------------------------------------------------------------------
+const verificarSubcategoria = async (id_subcategoria, transaction) => {
+    const subcategoria = await Subcategoria.findByPk(Number(id_subcategoria), { transaction });
+    if (!subcategoria) {
+        await transaction.rollback();
+        throw new ValidationError('Error de validación', [
+            `La subcategoría con id ${id_subcategoria} no existe`,
+        ]);
+    }
+    return subcategoria;
+};
+
+// ---------------------------------------------------------------------------
 // Helper: valida presencia de campos comunes de solicitud
 // ---------------------------------------------------------------------------
 const validarPresenciaCampos = ({ id_subcategoria, descripcion, latitud, longitud }, camposExtra = []) => {
@@ -339,11 +362,7 @@ export const crearSolicitudInmediata = async (req, res) => {
         // 2. Validaciones de presencia
         // ----------------------------------------------------------------
         const camposFaltantes = validarPresenciaCampos({ id_subcategoria, descripcion, latitud, longitud });
-
-        if (camposFaltantes.length > 0) {
-            await t.rollback();
-            throw new ValidationError('Error de validación', camposFaltantes);
-        }
+        await throwIfValidationErrors(camposFaltantes, t);
 
         // ----------------------------------------------------------------
         // 3. Validaciones de formato
@@ -351,25 +370,12 @@ export const crearSolicitudInmediata = async (req, res) => {
         const { erroresFormato, latNum, lngNum, descTrimmed } = validarCamposSolicitud(
             latitud, longitud, id_subcategoria, descripcion, prioridad
         );
-
-        if (erroresFormato.length > 0) {
-            await t.rollback();
-            throw new ValidationError('Error de validación', erroresFormato);
-        }
+        await throwIfValidationErrors(erroresFormato, t);
 
         // ----------------------------------------------------------------
         // 4. Verificar que la subcategoría exista
         // ----------------------------------------------------------------
-        const subcategoria = await Subcategoria.findByPk(Number(id_subcategoria), {
-            transaction: t,
-        });
-
-        if (!subcategoria) {
-            await t.rollback();
-            throw new ValidationError('Error de validación', [
-                `La subcategoría con id ${id_subcategoria} no existe`,
-            ]);
-        }
+        const subcategoria = await verificarSubcategoria(id_subcategoria, t);
 
         // ----------------------------------------------------------------
         // 5. Obtener el id_cliente del usuario autenticado
@@ -556,11 +562,7 @@ export const crearSolicitudProgramada = async (req, res) => {
         // ----------------------------------------------------------------
         const camposExtra = fecha_programada ? [] : ['El campo fecha_programada es requerido'];
         const camposFaltantes = validarPresenciaCampos({ id_subcategoria, descripcion, latitud, longitud }, camposExtra);
-
-        if (camposFaltantes.length > 0) {
-            await t.rollback();
-            throw new ValidationError('Error de validación', camposFaltantes);
-        }
+        await throwIfValidationErrors(camposFaltantes, t);
 
         // ----------------------------------------------------------------
         // 3. Validaciones de formato
@@ -581,24 +583,12 @@ export const crearSolicitudProgramada = async (req, res) => {
             }
         }
 
-        if (erroresFormato.length > 0) {
-            await t.rollback();
-            throw new ValidationError('Error de validación', erroresFormato);
-        }
+        await throwIfValidationErrors(erroresFormato, t);
 
         // ----------------------------------------------------------------
         // 4. Verificar que la subcategoría exista
         // ----------------------------------------------------------------
-        const subcategoria = await Subcategoria.findByPk(Number(id_subcategoria), {
-            transaction: t,
-        });
-
-        if (!subcategoria) {
-            await t.rollback();
-            throw new ValidationError('Error de validación', [
-                `La subcategoría con id ${id_subcategoria} no existe`,
-            ]);
-        }
+        const subcategoria = await verificarSubcategoria(id_subcategoria, t);
 
         // ----------------------------------------------------------------
         // 5. Obtener el id_cliente del usuario autenticado
