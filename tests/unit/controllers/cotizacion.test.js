@@ -6,11 +6,22 @@ const mockModels = {
   sequelize: { transaction: jest.fn() },
   Cotizacion: { findOne: jest.fn(), findByPk: jest.fn(), findAll: jest.fn(), create: jest.fn(), update: jest.fn(), count: jest.fn() },
   Solicitud: { findByPk: jest.fn(), update: jest.fn() },
-  Cliente: { findOne: jest.fn() },
-  Tecnico: { findOne: jest.fn() },
+  Cliente: { findOne: jest.fn(), findByPk: jest.fn() },
+  Tecnico: { findOne: jest.fn(), findByPk: jest.fn() },
   TecnicoSolicitudQueue: { findOne: jest.fn(), update: jest.fn() },
   EstadoSolicitud: {},
   Usuario: {},
+};
+
+const mockSocketEmitter = {
+  emitNuevaCotizacion:  jest.fn(),
+  emitCotizacionAceptada: jest.fn(),
+  emitCotizacionRechazada: jest.fn(),
+};
+
+const mockCotizacionBatcher = {
+  addCotizacion: jest.fn(),
+  cancelBatch:   jest.fn(),
 };
 
 const mockTransaction = { commit: jest.fn(), rollback: jest.fn(), finished: undefined };
@@ -32,6 +43,8 @@ jest.unstable_mockModule('../../../models/index.js', () => mockModels);
 jest.unstable_mockModule('../../../utils/errorHandler.js', () => ({ handleError: mockHandleError }));
 jest.unstable_mockModule('../../../utils/logger.js', () => ({ default: mockLogger }));
 jest.unstable_mockModule('sequelize', () => ({ Op: mockOp }));
+jest.unstable_mockModule('../../../sockets/services/socketEmitter.js', () => mockSocketEmitter);
+jest.unstable_mockModule('../../../sockets/services/cotizacionBatcher.js', () => mockCotizacionBatcher);
 
 const { ValidationError, NotFoundError, ForbiddenError, ConflictError } =
   await import('../../../utils/errors/AppError.js');
@@ -229,6 +242,48 @@ describe('cotizacionController', () => {
       const err = mockHandleError.mock.calls[0][1];
       expect(err).toBeInstanceOf(ConflictError);
     });
+
+    it('debe emitir WebSocket cuando idClienteUsuario está disponible → 201', async () => {
+      req.body = { ...validBody };
+      req.usuario = { id_usuario: 10 };
+
+      mockModels.Tecnico.findOne.mockResolvedValue({ id_tecnico: 5 });
+      mockModels.Solicitud.findByPk.mockResolvedValue({ id_solicitud: 15, id_estado: 2, id_cliente: 3 });
+      mockModels.TecnicoSolicitudQueue.findOne.mockResolvedValue({ id_cola: 1 });
+      mockModels.Cotizacion.findOne.mockResolvedValue(null);
+      mockModels.Cotizacion.create.mockResolvedValue({
+        id_cotizacion: 7, id_solicitud: 15, id_tecnico: 5, valor_cotizacion: 180000, estado: 'PENDIENTE',
+      });
+      mockModels.TecnicoSolicitudQueue.update.mockResolvedValue([1]);
+      mockModels.Solicitud.update.mockResolvedValue([1]);
+      mockModels.Cliente.findByPk.mockResolvedValue({ id_usuario: 20 }); // cliente owner con id_usuario
+      mockModels.Cotizacion.findByPk.mockResolvedValue({ id_cotizacion: 7 });
+
+      await crearCotizacion(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(mockSocketEmitter.emitNuevaCotizacion).toHaveBeenCalled();
+      expect(mockCotizacionBatcher.addCotizacion).toHaveBeenCalledWith(15, 20);
+    });
+
+    it('debe omitir WebSocket cuando Cliente.findByPk devuelve null → 201', async () => {
+      req.body = { id_solicitud: 15, valor_cotizacion: 95000 };
+      req.usuario = { id_usuario: 10 };
+
+      mockModels.Tecnico.findOne.mockResolvedValue({ id_tecnico: 5 });
+      mockModels.Solicitud.findByPk.mockResolvedValue({ id_solicitud: 15, id_estado: 3, id_cliente: 3 });
+      mockModels.TecnicoSolicitudQueue.findOne.mockResolvedValue({ id_cola: 2 });
+      mockModels.Cotizacion.findOne.mockResolvedValue(null);
+      mockModels.Cotizacion.create.mockResolvedValue({ id_cotizacion: 8, id_tecnico: 5, valor_cotizacion: 95000 });
+      mockModels.TecnicoSolicitudQueue.update.mockResolvedValue([1]);
+      mockModels.Cliente.findByPk.mockResolvedValue(null); // no cliente → no emit
+      mockModels.Cotizacion.findByPk.mockResolvedValue({ id_cotizacion: 8 });
+
+      await crearCotizacion(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(mockSocketEmitter.emitNuevaCotizacion).not.toHaveBeenCalled();
+    });
   });
 
   // =====================================================================
@@ -404,6 +459,33 @@ describe('cotizacionController', () => {
       const err = mockHandleError.mock.calls[0][1];
       expect(err).toBeInstanceOf(ConflictError);
     });
+
+    it('debe emitir WebSocket al aceptar cotización con técnico ganador → 200', async () => {
+      req.params = { id: '7' };
+      req.usuario = { id_usuario: 10 };
+
+      mockModels.Cliente.findOne.mockResolvedValue({ id_cliente: 3 });
+      mockModels.Cotizacion.findByPk
+        .mockResolvedValueOnce({
+          id_cotizacion: 7, id_solicitud: 15, id_tecnico: 5, estado: 'PENDIENTE',
+          solicitud: { id_solicitud: 15, id_cliente: 3, id_estado: 3 },
+        })
+        .mockResolvedValueOnce({
+          id_cotizacion: 7, estado: 'ACEPTADA',
+          tecnico: { id_tecnico: 5, datos_usuario: { nombre: 'Andrés', apellido: 'M.' } },
+          solicitud: { id_solicitud: 15, id_estado: 4, estado: { id_estado: 4, descripcion: 'ASIGNADA' } },
+        });
+      mockModels.Cotizacion.update.mockResolvedValue([1]);
+      mockModels.Solicitud.update.mockResolvedValue([1]);
+      mockModels.Tecnico.findByPk.mockResolvedValue({ id_usuario: 30 });
+      mockModels.Cotizacion.findAll.mockResolvedValue([{ id_tecnico: 6 }]);
+
+      await aceptarCotizacion(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(mockSocketEmitter.emitCotizacionAceptada).toHaveBeenCalled();
+      expect(mockCotizacionBatcher.cancelBatch).toHaveBeenCalledWith(15);
+    });
   });
 
   // =====================================================================
@@ -509,6 +591,25 @@ describe('cotizacionController', () => {
 
       const err = mockHandleError.mock.calls[0][1];
       expect(err).toBeInstanceOf(ForbiddenError);
+    });
+
+    it('debe emitir WebSocket al rechazar cotización → 200', async () => {
+      req.params = { id: '8' };
+      req.usuario = { id_usuario: 10 };
+
+      mockModels.Cliente.findOne.mockResolvedValue({ id_cliente: 3 });
+      mockModels.Cotizacion.findByPk.mockResolvedValue({
+        id_cotizacion: 8, id_solicitud: 15, id_tecnico: 6, estado: 'PENDIENTE',
+        solicitud: { id_solicitud: 15, id_cliente: 3, id_estado: 3 },
+      });
+      mockModels.Cotizacion.update.mockResolvedValue([1]);
+      mockModels.Cotizacion.count.mockResolvedValue(1);
+      mockModels.Tecnico.findByPk.mockResolvedValue({ id_usuario: 31 });
+
+      await rechazarCotizacion(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(mockSocketEmitter.emitCotizacionRechazada).toHaveBeenCalled();
     });
   });
 });

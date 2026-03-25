@@ -74,6 +74,10 @@ CertificadoTecnico.belongsTo(Tecnico, { foreignKey: 'id_tecnico', as: 'tecnico' 
 Tecnico.belongsToMany(Subcategoria, { through: Especialidad, foreignKey: 'id_tecnico', otherKey: 'id_subcategoria', as: 'especialidades' });
 Subcategoria.belongsToMany(Tecnico, { through: Especialidad, foreignKey: 'id_subcategoria', otherKey: 'id_tecnico', as: 'tecnicos' });
 
+// Asociación directa Especialidad -> Subcategoria (necesaria para queries sobre Especialidad con include)
+Especialidad.belongsTo(Subcategoria, { foreignKey: 'id_subcategoria', as: 'Subcategoria' });
+Subcategoria.hasMany(Especialidad, { foreignKey: 'id_subcategoria' });
+
 // Ciudades de operación (Muchos a Muchos: TECNICO <-> Ciudad)
 Tecnico.belongsToMany(Ciudad, { through: CiudadTecnico, foreignKey: 'id_tecnico', otherKey: 'id_ciudad', as: 'ciudades_operacion' });
 Ciudad.belongsToMany(Tecnico, { through: CiudadTecnico, foreignKey: 'id_ciudad', otherKey: 'id_tecnico', as: 'tecnicos_operan' });

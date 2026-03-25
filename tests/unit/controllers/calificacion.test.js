@@ -16,11 +16,15 @@ const mockModels = {
     create: jest.fn(),
   },
   Servicio: { findByPk: jest.fn() },
-  Cliente: { findOne: jest.fn() },
+  Cliente: { findOne: jest.fn(), findByPk: jest.fn() },
   Tecnico: { findByPk: jest.fn(), findOne: jest.fn(), update: jest.fn() },
   Usuario: {},
   Subcategoria: {},
   EstadoSolicitud: {},
+};
+
+const mockSocketEmitter = {
+  emitCalificacionRecibida: jest.fn(),
 };
 
 const mockTransaction = {
@@ -45,6 +49,7 @@ jest.unstable_mockModule('../../../utils/errorHandler.js', () => ({
 jest.unstable_mockModule('../../../utils/logger.js', () => ({
   default: { info: jest.fn(), error: jest.fn(), warn: jest.fn() },
 }));
+jest.unstable_mockModule('../../../sockets/services/socketEmitter.js', () => mockSocketEmitter);
 
 // Import real error classes (not mocked)
 const { ValidationError, NotFoundError, ForbiddenError, ConflictError } =
@@ -220,6 +225,50 @@ describe('calificacionController', () => {
       const error = mockHandleError.mock.calls[0][1];
       expect(error).toBeInstanceOf(ConflictError);
       expect(error.message).toContain('ya fue calificado');
+    });
+
+    it('debe emitir WebSocket cuando técnico encontrado → 201', async () => {
+      req.body = { id_servicio: 1, puntuacion: 5, comentario: 'Muy buen trabajo' };
+      req.usuario = { id_usuario: 10 };
+
+      mockModels.Cliente.findOne.mockResolvedValue({ id_cliente: 5 });
+      mockModels.Servicio.findByPk.mockResolvedValue({
+        id_servicio: 1, id_estado: 6, id_cliente: 5, id_tecnico: 3,
+      });
+      mockModels.Calificacion.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ promedio: '4.80', total: '5' });
+      mockModels.Calificacion.create.mockResolvedValue({ id_calificacion: 101, puntuacion: 5 });
+      mockModels.Tecnico.update.mockResolvedValue([1]);
+      mockModels.Calificacion.findByPk.mockResolvedValue({ id_calificacion: 101, puntuacion: 5 });
+      mockModels.Tecnico.findByPk.mockResolvedValue({ id_usuario: 25 }); // técnico con id_usuario
+
+      await crearCalificacion(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(mockSocketEmitter.emitCalificacionRecibida).toHaveBeenCalled();
+    });
+
+    it('debe omitir WebSocket cuando Tecnico.findByPk devuelve null → 201', async () => {
+      req.body = { id_servicio: 2, puntuacion: 3 };
+      req.usuario = { id_usuario: 10 };
+
+      mockModels.Cliente.findOne.mockResolvedValue({ id_cliente: 5 });
+      mockModels.Servicio.findByPk.mockResolvedValue({
+        id_servicio: 2, id_estado: 6, id_cliente: 5, id_tecnico: 4,
+      });
+      mockModels.Calificacion.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ promedio: '3.00', total: '1' });
+      mockModels.Calificacion.create.mockResolvedValue({ id_calificacion: 102, puntuacion: 3 });
+      mockModels.Tecnico.update.mockResolvedValue([1]);
+      mockModels.Calificacion.findByPk.mockResolvedValue({ id_calificacion: 102, puntuacion: 3 });
+      mockModels.Tecnico.findByPk.mockResolvedValue(null); // técnico no encontrado → no emit
+
+      await crearCalificacion(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(mockSocketEmitter.emitCalificacionRecibida).not.toHaveBeenCalled();
     });
   });
 
