@@ -37,6 +37,41 @@ const calcularPriorityScore = (distanciaMetros, promCalificacion) => {
 };
 
 // ---------------------------------------------------------------------------
+// Helper: notifica técnicos via WebSocket (best-effort, no lanza excepción)
+// ---------------------------------------------------------------------------
+const notificarTecnicosWS = async ({ nuevaSolicitud, cliente, id_subcategoria, subcategoria, descTrimmed, tipo_solicitud, prioridad, tecnicosEncontrados, extra = {} }) => {
+    if (tecnicosEncontrados.length === 0) return;
+    try {
+        const { emitNuevaSolicitud } = await import('../sockets/services/socketEmitter.js');
+        emitNuevaSolicitud({
+            id_solicitud: nuevaSolicitud.id_solicitud,
+            solicitudData: {
+                id_solicitud:       nuevaSolicitud.id_solicitud,
+                id_cliente:         cliente.id_cliente,
+                id_subcategoria:    Number(id_subcategoria),
+                subcategoria:       subcategoria.nombre,
+                descripcion:        descTrimmed,
+                tipo_solicitud,
+                prioridad,
+                direccion_servicio: null,
+                ...extra,
+            },
+            tecnicos: tecnicosEncontrados.map((tec) => ({
+                id_tecnico:       tec.id_tecnico,
+                id_usuario:       tec.id_usuario,
+                distancia_metros: parseFloat(tec.distancia_metros),
+                priority_score:   calcularPriorityScore(
+                    parseFloat(tec.distancia_metros),
+                    parseFloat(tec.prom_calificacion)
+                ),
+            })),
+        });
+    } catch (wsErr) {
+        logger.warn(`notificarTecnicosWS: WebSocket emit falló (no-crítico): ${wsErr.message}`);
+    }
+};
+
+// ---------------------------------------------------------------------------
 // Helper: valida campos comunes de solicitud (inmediata y programada)
 // ---------------------------------------------------------------------------
 const validarCamposSolicitud = (latitud, longitud, id_subcategoria, descripcion, prioridad) => {
@@ -60,6 +95,162 @@ const validarCamposSolicitud = (latitud, longitud, id_subcategoria, descripcion,
         erroresFormato.push(`La prioridad debe ser uno de: ${prioridadesValidas.join(', ')}`);
 
     return { erroresFormato, latNum, lngNum, descTrimmed };
+};
+
+// ---------------------------------------------------------------------------
+// Helper: rollback + throw ValidationError si hay errores (elimina patrón repetido)
+// ---------------------------------------------------------------------------
+const throwIfValidationErrors = async (errors, transaction) => {
+    if (errors.length === 0) return;
+    await transaction.rollback();
+    throw new ValidationError('Error de validación', errors);
+};
+
+// ---------------------------------------------------------------------------
+// Helper: verifica que la subcategoría exista (con rollback si no)
+// ---------------------------------------------------------------------------
+const verificarSubcategoria = async (id_subcategoria, transaction) => {
+    const subcategoria = await Subcategoria.findByPk(Number(id_subcategoria), { transaction });
+    if (!subcategoria) {
+        await transaction.rollback();
+        throw new ValidationError('Error de validación', [
+            `La subcategoría con id ${id_subcategoria} no existe`,
+        ]);
+    }
+    return subcategoria;
+};
+
+// ---------------------------------------------------------------------------
+// Helper: valida presencia de campos comunes de solicitud
+// ---------------------------------------------------------------------------
+const validarPresenciaCampos = ({ id_subcategoria, descripcion, latitud, longitud }, camposExtra = []) => {
+    const camposFaltantes = [];
+    if (id_subcategoria === undefined || id_subcategoria === null)
+        camposFaltantes.push('El campo id_subcategoria es requerido');
+    if (!descripcion)
+        camposFaltantes.push('El campo descripcion es requerido');
+    if (latitud === undefined || latitud === null)
+        camposFaltantes.push('El campo latitud es requerido');
+    if (longitud === undefined || longitud === null)
+        camposFaltantes.push('El campo longitud es requerido');
+    camposFaltantes.push(...camposExtra);
+    return camposFaltantes;
+};
+
+// ---------------------------------------------------------------------------
+// Helper: crea entradas en TecnicoSolicitudQueue para técnicos encontrados
+// ---------------------------------------------------------------------------
+const crearEntradasCola = async (tecnicosEncontrados, idSolicitud, transaction, contexto) => {
+    if (tecnicosEncontrados.length === 0) return;
+
+    const entradasCola = tecnicosEncontrados.map((tecnico) => ({
+        id_solicitud:     idSolicitud,
+        id_tecnico:       tecnico.id_tecnico,
+        estado_respuesta: 'NOTIFICADO',
+        priority_score:   calcularPriorityScore(
+            Number.parseFloat(tecnico.distancia_metros),
+            Number.parseFloat(tecnico.prom_calificacion)
+        ),
+    }));
+
+    await TecnicoSolicitudQueue.bulkCreate(entradasCola, { transaction });
+
+    logger.info(contexto + ': ' + tecnicosEncontrados.length + ' técnicos encolados para solicitud ' + idSolicitud);
+};
+
+// ---------------------------------------------------------------------------
+// Radios de búsqueda expandidos (km) cuando no se encuentran técnicos
+// dentro de su propio radio_cobertura_km. Se prueban en orden ascendente.
+// ---------------------------------------------------------------------------
+const RADIOS_EXPANSION_KM = [15, 30, 50];
+
+// ---------------------------------------------------------------------------
+// Helper: busca técnicos cercanos con expansión progresiva de radio.
+//
+// 1) Busca técnicos cuya ubicacion_base esté dentro de SU PROPIO
+//    radio_cobertura_km (respeta la preferencia del técnico).
+// 2) Si no encuentra, expande el radio a 15 km, 30 km, 50 km
+//    (independiente del radio configurado por el técnico).
+// ---------------------------------------------------------------------------
+const buscarTecnicosCercanos = async ({ latNum, lngNum, id_subcategoria, filtroInmediato, transaction }) => {
+    const filtroInmediatoSQL = filtroInmediato
+        ? `AND t.disponible_inmediato = true
+           AND NOT EXISTS (
+               SELECT 1 FROM "Servicio" sv
+               WHERE sv.id_tecnico = t.id_tecnico
+                 AND sv.id_estado = 5
+           )`
+        : '';
+
+    const condicionesBase = `
+        t.estado_validacion = 'ACTIVO'
+        AND t.ubicacion_base IS NOT NULL
+        AND e.id_subcategoria = :id_subcategoria
+        ${filtroInmediatoSQL}`;
+
+    const buildQuery = (radioCondicion) => `
+        SELECT t.id_tecnico,
+               t.id_usuario,
+               t.prom_calificacion,
+               t.radio_cobertura_km,
+               ST_Distance(
+                   t.ubicacion_base::geography,
+                   ST_SetSRID(ST_MakePoint(:longitud, :latitud), 4326)::geography
+               ) AS distancia_metros
+        FROM "Tecnico" t
+        INNER JOIN "Especialidad" e ON t.id_tecnico = e.id_tecnico
+        WHERE ${condicionesBase}
+          AND ${radioCondicion}
+        ORDER BY distancia_metros ASC, t.prom_calificacion DESC
+        LIMIT 10`;
+
+    const baseReplacements = {
+        longitud:        lngNum,
+        latitud:         latNum,
+        id_subcategoria: Number(id_subcategoria),
+    };
+
+    // Paso 1: buscar dentro del radio propio de cada técnico
+    let tecnicos = await sequelize.query(
+        buildQuery(`ST_DWithin(
+            t.ubicacion_base::geography,
+            ST_SetSRID(ST_MakePoint(:longitud, :latitud), 4326)::geography,
+            t.radio_cobertura_km * 1000
+        )`),
+        { replacements: baseReplacements, type: QueryTypes.SELECT, transaction }
+    );
+
+    if (tecnicos.length > 0) return { tecnicos, radio_usado_km: null };
+
+    // Paso 2: expandir radio progresivamente
+    for (const radioKm of RADIOS_EXPANSION_KM) {
+        tecnicos = await sequelize.query(
+            buildQuery(`ST_DWithin(
+                t.ubicacion_base::geography,
+                ST_SetSRID(ST_MakePoint(:longitud, :latitud), 4326)::geography,
+                :radio_metros
+            )`),
+            {
+                replacements: { ...baseReplacements, radio_metros: radioKm * 1000 },
+                type: QueryTypes.SELECT,
+                transaction,
+            }
+        );
+
+        if (tecnicos.length > 0) {
+            logger.info(
+                `buscarTecnicosCercanos: ${tecnicos.length} técnicos encontrados ` +
+                `con radio expandido de ${radioKm}km`
+            );
+            return { tecnicos, radio_usado_km: radioKm };
+        }
+    }
+
+    logger.info(
+        `buscarTecnicosCercanos: Sin técnicos incluso con radio máximo ` +
+        `de ${RADIOS_EXPANSION_KM.at(-1)}km`
+    );
+    return { tecnicos: [], radio_usado_km: null };
 };
 
 // ---------------------------------------------------------------------------
@@ -168,48 +359,23 @@ export const crearSolicitudInmediata = async (req, res) => {
         } = req.body;
 
         // ----------------------------------------------------------------
-        // 2. Validaciones de presencia (fase 1)
+        // 2. Validaciones de presencia
         // ----------------------------------------------------------------
-        const camposFaltantes = [];
-        if (id_subcategoria === undefined || id_subcategoria === null)
-            camposFaltantes.push('El campo id_subcategoria es requerido');
-        if (!descripcion)
-            camposFaltantes.push('El campo descripcion es requerido');
-        if (latitud === undefined || latitud === null)
-            camposFaltantes.push('El campo latitud es requerido');
-        if (longitud === undefined || longitud === null)
-            camposFaltantes.push('El campo longitud es requerido');
-
-        if (camposFaltantes.length > 0) {
-            await t.rollback();
-            throw new ValidationError('Error de validación', camposFaltantes);
-        }
+        const camposFaltantes = validarPresenciaCampos({ id_subcategoria, descripcion, latitud, longitud });
+        await throwIfValidationErrors(camposFaltantes, t);
 
         // ----------------------------------------------------------------
-        // 3. Validaciones de formato (fase 2)
+        // 3. Validaciones de formato
         // ----------------------------------------------------------------
         const { erroresFormato, latNum, lngNum, descTrimmed } = validarCamposSolicitud(
             latitud, longitud, id_subcategoria, descripcion, prioridad
         );
-
-        if (erroresFormato.length > 0) {
-            await t.rollback();
-            throw new ValidationError('Error de validación', erroresFormato);
-        }
+        await throwIfValidationErrors(erroresFormato, t);
 
         // ----------------------------------------------------------------
         // 4. Verificar que la subcategoría exista
         // ----------------------------------------------------------------
-        const subcategoria = await Subcategoria.findByPk(Number(id_subcategoria), {
-            transaction: t,
-        });
-
-        if (!subcategoria) {
-            await t.rollback();
-            throw new ValidationError('Error de validación', [
-                `La subcategoría con id ${id_subcategoria} no existe`,
-            ]);
-        }
+        const subcategoria = await verificarSubcategoria(id_subcategoria, t);
 
         // ----------------------------------------------------------------
         // 5. Obtener el id_cliente del usuario autenticado
@@ -217,50 +383,11 @@ export const crearSolicitudInmediata = async (req, res) => {
         const cliente = await obtenerCliente(req.usuario.id_usuario, t);
 
         // ----------------------------------------------------------------
-        // 6. Buscar técnicos cercanos con ST_DWithin (servicio inmediato)
-        //    - disponible_inmediato = true (toggle de jornada activo)
-        //    - estado_validacion = 'ACTIVO'
-        //    - Sin servicio en curso (EN_PROCESO)
-        //    - Tiene la subcategoría como especialidad
-        //    - Dentro de su propio radio_cobertura_km
+        // 6. Buscar técnicos cercanos con expansión progresiva de radio
         // ----------------------------------------------------------------
-        const tecnicosEncontrados = await sequelize.query(
-            `SELECT t.id_tecnico,
-                    t.id_usuario,
-                    t.prom_calificacion,
-                    t.radio_cobertura_km,
-                    ST_Distance(
-                        t.ubicacion_base::geography,
-                        ST_SetSRID(ST_MakePoint(:longitud, :latitud), 4326)::geography
-                    ) AS distancia_metros
-             FROM "Tecnico" t
-             INNER JOIN "Especialidad" e ON t.id_tecnico = e.id_tecnico
-             WHERE t.estado_validacion = 'ACTIVO'
-               AND t.disponible_inmediato = true
-               AND t.ubicacion_base IS NOT NULL
-               AND e.id_subcategoria = :id_subcategoria
-               AND NOT EXISTS (
-                   SELECT 1 FROM "Servicio" sv
-                   WHERE sv.id_tecnico = t.id_tecnico
-                     AND sv.id_estado = 5
-               )
-               AND ST_DWithin(
-                       t.ubicacion_base::geography,
-                       ST_SetSRID(ST_MakePoint(:longitud, :latitud), 4326)::geography,
-                       t.radio_cobertura_km * 1000
-                   )
-             ORDER BY distancia_metros ASC, t.prom_calificacion DESC
-             LIMIT 10`,
-            {
-                replacements: {
-                    longitud: lngNum,
-                    latitud:  latNum,
-                    id_subcategoria: Number(id_subcategoria),
-                },
-                type: QueryTypes.SELECT,
-                transaction: t,
-            }
-        );
+        const { tecnicos: tecnicosEncontrados, radio_usado_km } = await buscarTecnicosCercanos({
+            latNum, lngNum, id_subcategoria, filtroInmediato: true, transaction: t,
+        });
 
         // ----------------------------------------------------------------
         // 7. Determinar estado inicial según disponibilidad de técnicos
@@ -278,7 +405,7 @@ export const crearSolicitudInmediata = async (req, res) => {
                 imagenes:             imagenes || null,
                 ubicacion_solicitud:  {
                     type:        'Point',
-                    coordinates: [lngNum, latNum],   // [longitud, latitud] — GeoJSON estándar
+                    coordinates: [lngNum, latNum],
                 },
                 id_cliente:     cliente.id_cliente,
                 id_subcategoria: Number(id_subcategoria),
@@ -291,61 +418,22 @@ export const crearSolicitudInmediata = async (req, res) => {
 
         logger.info(
             `crearSolicitudInmediata: Solicitud ${nuevaSolicitud.id_solicitud} creada ` +
-            `para cliente ${cliente.id_cliente} — estado ${idEstadoInicial}`
+            `para cliente ${cliente.id_cliente} — estado ${idEstadoInicial}` +
+            (radio_usado_km ? ` (radio expandido: ${radio_usado_km}km)` : '')
         );
 
         // ----------------------------------------------------------------
         // 9. Crear entradas en la cola para cada técnico encontrado
         // ----------------------------------------------------------------
-        if (tecnicosEncontrados.length > 0) {
-            const entradasCola = tecnicosEncontrados.map((tecnico) => ({
-                id_solicitud:    nuevaSolicitud.id_solicitud,
-                id_tecnico:      tecnico.id_tecnico,
-                estado_respuesta: 'NOTIFICADO',
-                priority_score:  calcularPriorityScore(
-                    parseFloat(tecnico.distancia_metros),
-                    parseFloat(tecnico.prom_calificacion)
-                ),
-            }));
-
-            await TecnicoSolicitudQueue.bulkCreate(entradasCola, { transaction: t });
-
-            logger.info(
-                `crearSolicitudInmediata: ${tecnicosEncontrados.length} técnicos notificados ` +
-                `para solicitud ${nuevaSolicitud.id_solicitud}`
-            );
-        }
+        await crearEntradasCola(tecnicosEncontrados, nuevaSolicitud.id_solicitud, t, 'crearSolicitudInmediata');
 
         await t.commit();
 
         // ── WebSocket: notificar técnicos cercanos en tiempo real (best-effort) ──
-        try {
-            if (tecnicosEncontrados.length > 0) {
-                const { emitNuevaSolicitud } = await import('../sockets/services/socketEmitter.js');
-                emitNuevaSolicitud({
-                    id_solicitud: nuevaSolicitud.id_solicitud,
-                    solicitudData: {
-                        id_solicitud:    nuevaSolicitud.id_solicitud,
-                        tipo_servicio:   'INMEDIATO',
-                        prioridad,
-                        descripcion:     descTrimmed,
-                        id_subcategoria: Number(id_subcategoria),
-                        fecha_solicitud: nuevaSolicitud.createdAt,
-                    },
-                    tecnicos: tecnicosEncontrados.map((tec) => ({
-                        id_tecnico:       tec.id_tecnico,
-                        id_usuario:       tec.id_usuario,
-                        distancia_metros: parseFloat(tec.distancia_metros),
-                        priority_score:   calcularPriorityScore(
-                            parseFloat(tec.distancia_metros),
-                            parseFloat(tec.prom_calificacion)
-                        ),
-                    })),
-                });
-            }
-        } catch (wsErr) {
-            logger.warn(`crearSolicitudInmediata: WebSocket emit falló (no-crítico): ${wsErr.message}`);
-        }
+        await notificarTecnicosWS({
+            nuevaSolicitud, cliente, id_subcategoria, subcategoria,
+            descTrimmed, tipo_solicitud: 'INMEDIATA', prioridad, tecnicosEncontrados,
+        });
 
         const mensajeRespuesta = tecnicosEncontrados.length > 0
             ? `Solicitud inmediata creada. ${tecnicosEncontrados.length} técnicos notificados.`
@@ -362,6 +450,7 @@ export const crearSolicitudInmediata = async (req, res) => {
                 id_subcategoria:     nuevaSolicitud.id_subcategoria,
                 fecha_solicitud:     nuevaSolicitud.fecha_solicitud,
                 tecnicos_notificados: tecnicosEncontrados.length,
+                ...(radio_usado_km ? { radio_busqueda_km: radio_usado_km } : {}),
             },
         });
 
@@ -469,27 +558,14 @@ export const crearSolicitudProgramada = async (req, res) => {
         } = req.body;
 
         // ----------------------------------------------------------------
-        // 2. Validaciones de presencia (fase 1)
+        // 2. Validaciones de presencia
         // ----------------------------------------------------------------
-        const camposFaltantes = [];
-        if (id_subcategoria === undefined || id_subcategoria === null)
-            camposFaltantes.push('El campo id_subcategoria es requerido');
-        if (!descripcion)
-            camposFaltantes.push('El campo descripcion es requerido');
-        if (latitud === undefined || latitud === null)
-            camposFaltantes.push('El campo latitud es requerido');
-        if (longitud === undefined || longitud === null)
-            camposFaltantes.push('El campo longitud es requerido');
-        if (!fecha_programada)
-            camposFaltantes.push('El campo fecha_programada es requerido');
-
-        if (camposFaltantes.length > 0) {
-            await t.rollback();
-            throw new ValidationError('Error de validación', camposFaltantes);
-        }
+        const camposExtra = fecha_programada ? [] : ['El campo fecha_programada es requerido'];
+        const camposFaltantes = validarPresenciaCampos({ id_subcategoria, descripcion, latitud, longitud }, camposExtra);
+        await throwIfValidationErrors(camposFaltantes, t);
 
         // ----------------------------------------------------------------
-        // 3. Validaciones de formato (fase 2)
+        // 3. Validaciones de formato
         // ----------------------------------------------------------------
         const { erroresFormato, latNum, lngNum, descTrimmed } = validarCamposSolicitud(
             latitud, longitud, id_subcategoria, descripcion, prioridad
@@ -500,31 +576,19 @@ export const crearSolicitudProgramada = async (req, res) => {
         if (isNaN(fechaProgramadaDate.getTime())) {
             erroresFormato.push('La fecha_programada no tiene un formato de fecha válido (use ISO 8601: YYYY-MM-DDTHH:mm:ss)');
         } else {
-            const ahora           = new Date();
+            const ahora            = new Date();
             const veinticuatroHoras = 24 * 60 * 60 * 1000; // ms
             if (fechaProgramadaDate.getTime() - ahora.getTime() < veinticuatroHoras) {
                 erroresFormato.push('La fecha_programada debe ser al menos 24 horas en el futuro');
             }
         }
 
-        if (erroresFormato.length > 0) {
-            await t.rollback();
-            throw new ValidationError('Error de validación', erroresFormato);
-        }
+        await throwIfValidationErrors(erroresFormato, t);
 
         // ----------------------------------------------------------------
         // 4. Verificar que la subcategoría exista
         // ----------------------------------------------------------------
-        const subcategoria = await Subcategoria.findByPk(Number(id_subcategoria), {
-            transaction: t,
-        });
-
-        if (!subcategoria) {
-            await t.rollback();
-            throw new ValidationError('Error de validación', [
-                `La subcategoría con id ${id_subcategoria} no existe`,
-            ]);
-        }
+        const subcategoria = await verificarSubcategoria(id_subcategoria, t);
 
         // ----------------------------------------------------------------
         // 5. Obtener el id_cliente del usuario autenticado
@@ -532,40 +596,12 @@ export const crearSolicitudProgramada = async (req, res) => {
         const cliente = await obtenerCliente(req.usuario.id_usuario, t);
 
         // ----------------------------------------------------------------
-        // 6. Buscar técnicos cercanos con ST_DWithin (servicio programado)
-        //    SIN filtro de disponible_inmediato (servicio no es urgente)
+        // 6. Buscar técnicos cercanos con expansión progresiva de radio
+        //    SIN filtro de disponible_inmediato (servicio programado)
         // ----------------------------------------------------------------
-        const tecnicosEncontrados = await sequelize.query(
-            `SELECT t.id_tecnico,
-                    t.id_usuario,
-                    t.prom_calificacion,
-                    t.radio_cobertura_km,
-                    ST_Distance(
-                        t.ubicacion_base::geography,
-                        ST_SetSRID(ST_MakePoint(:longitud, :latitud), 4326)::geography
-                    ) AS distancia_metros
-             FROM "Tecnico" t
-             INNER JOIN "Especialidad" e ON t.id_tecnico = e.id_tecnico
-             WHERE t.estado_validacion = 'ACTIVO'
-               AND t.ubicacion_base IS NOT NULL
-               AND e.id_subcategoria = :id_subcategoria
-               AND ST_DWithin(
-                       t.ubicacion_base::geography,
-                       ST_SetSRID(ST_MakePoint(:longitud, :latitud), 4326)::geography,
-                       t.radio_cobertura_km * 1000
-                   )
-             ORDER BY distancia_metros ASC, t.prom_calificacion DESC
-             LIMIT 10`,
-            {
-                replacements: {
-                    longitud: lngNum,
-                    latitud:  latNum,
-                    id_subcategoria: Number(id_subcategoria),
-                },
-                type: QueryTypes.SELECT,
-                transaction: t,
-            }
-        );
+        const { tecnicos: tecnicosEncontrados, radio_usado_km } = await buscarTecnicosCercanos({
+            latNum, lngNum, id_subcategoria, filtroInmediato: false, transaction: t,
+        });
 
         // ----------------------------------------------------------------
         // 7. Determinar estado inicial según disponibilidad de técnicos
@@ -596,12 +632,12 @@ export const crearSolicitudProgramada = async (req, res) => {
 
         logger.info(
             `crearSolicitudProgramada: Solicitud ${nuevaSolicitud.id_solicitud} creada ` +
-            `para cliente ${cliente.id_cliente} — estado ${idEstadoInicial}`
+            `para cliente ${cliente.id_cliente} — estado ${idEstadoInicial}` +
+            (radio_usado_km ? ` (radio expandido: ${radio_usado_km}km)` : '')
         );
 
         // ----------------------------------------------------------------
         // 9. Crear la Cita vinculada a la solicitud
-        //    id_estado = 1 (PENDIENTE) — aún no hay técnico asignado
         // ----------------------------------------------------------------
         const nuevaCita = await Cita.create(
             {
@@ -624,56 +660,16 @@ export const crearSolicitudProgramada = async (req, res) => {
         // ----------------------------------------------------------------
         // 10. Crear entradas en la cola para cada técnico encontrado
         // ----------------------------------------------------------------
-        if (tecnicosEncontrados.length > 0) {
-            const entradasCola = tecnicosEncontrados.map((tecnico) => ({
-                id_solicitud:    nuevaSolicitud.id_solicitud,
-                id_tecnico:      tecnico.id_tecnico,
-                estado_respuesta: 'NOTIFICADO',
-                priority_score:  calcularPriorityScore(
-                    parseFloat(tecnico.distancia_metros),
-                    parseFloat(tecnico.prom_calificacion)
-                ),
-            }));
-
-            await TecnicoSolicitudQueue.bulkCreate(entradasCola, { transaction: t });
-
-            logger.info(
-                `crearSolicitudProgramada: ${tecnicosEncontrados.length} técnicos notificados ` +
-                `para solicitud ${nuevaSolicitud.id_solicitud}`
-            );
-        }
+        await crearEntradasCola(tecnicosEncontrados, nuevaSolicitud.id_solicitud, t, 'crearSolicitudProgramada');
 
         await t.commit();
 
         // ── WebSocket: notificar técnicos cercanos en tiempo real (best-effort) ──
-        try {
-            if (tecnicosEncontrados.length > 0) {
-                const { emitNuevaSolicitud } = await import('../sockets/services/socketEmitter.js');
-                emitNuevaSolicitud({
-                    id_solicitud: nuevaSolicitud.id_solicitud,
-                    solicitudData: {
-                        id_solicitud:    nuevaSolicitud.id_solicitud,
-                        tipo_servicio:   'PROGRAMADO',
-                        prioridad,
-                        descripcion:     descTrimmed,
-                        id_subcategoria: Number(id_subcategoria),
-                        fecha_solicitud: nuevaSolicitud.createdAt,
-                        fecha_programada: fechaProgramadaDate.toISOString(),
-                    },
-                    tecnicos: tecnicosEncontrados.map((tec) => ({
-                        id_tecnico:       tec.id_tecnico,
-                        id_usuario:       tec.id_usuario,
-                        distancia_metros: parseFloat(tec.distancia_metros),
-                        priority_score:   calcularPriorityScore(
-                            parseFloat(tec.distancia_metros),
-                            parseFloat(tec.prom_calificacion)
-                        ),
-                    })),
-                });
-            }
-        } catch (wsErr) {
-            logger.warn(`crearSolicitudProgramada: WebSocket emit falló (no-crítico): ${wsErr.message}`);
-        }
+        await notificarTecnicosWS({
+            nuevaSolicitud, cliente, id_subcategoria, subcategoria,
+            descTrimmed, tipo_solicitud: 'PROGRAMADA', prioridad, tecnicosEncontrados,
+            extra: { fecha_programada: fechaProgramadaDate.toISOString() },
+        });
 
         const mensajeRespuesta = tecnicosEncontrados.length > 0
             ? `Solicitud programada creada. ${tecnicosEncontrados.length} técnicos notificados.`
@@ -695,6 +691,7 @@ export const crearSolicitudProgramada = async (req, res) => {
                     id_estado:  nuevaCita.id_estado,
                 },
                 tecnicos_notificados: tecnicosEncontrados.length,
+                ...(radio_usado_km ? { radio_busqueda_km: radio_usado_km } : {}),
             },
         });
 

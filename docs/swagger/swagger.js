@@ -36,12 +36,12 @@ Node.js 20 | Express 5 | PostgreSQL 17 + PostGIS 3.5 | Sequelize ORM
     },
     servers: [
       {
-        url: 'http://localhost:3000/api',
-        description: 'Servidor de Desarrollo Local'
+        url: 'http://18.219.47.14:3000/api',
+        description: 'Servidor de Producción (AWS EC2)'
       },
       {
-        url: 'https://api-geo.production.com/api',
-        description: 'Servidor de Producción'
+        url: 'http://localhost:3000/api',
+        description: 'Servidor de Desarrollo Local'
       }
     ],
     components: {
@@ -227,7 +227,17 @@ Node.js 20 | Express 5 | PostgreSQL 17 + PostGIS 3.5 | Sequelize ORM
                   type: 'string',
                   enum: ['PENDIENTE_VALIDACION', 'ACTIVO', 'SUSPENDIDO', 'RECHAZADO', 'INACTIVO'],
                   example: 'ACTIVO',
-                  description: 'Estado de validación del técnico. Solo presente si el rol es TECNICO.'
+                  description: 'Solo presente si el rol es TECNICO'
+                },
+                disponible_inmediato: {
+                  type: 'boolean',
+                  example: true,
+                  description: 'Solo presente si el rol es TECNICO'
+                },
+                radio_cobertura_km: {
+                  type: 'integer',
+                  example: 10,
+                  description: 'Radio de cobertura en km. Solo presente si el rol es TECNICO'
                 }
               }
             }

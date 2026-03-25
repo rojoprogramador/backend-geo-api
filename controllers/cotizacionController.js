@@ -336,13 +336,13 @@ export const crearCotizacion = async (req, res) => {
                     id_solicitud: Number(id_solicitud),
                     id_cliente_usuario: idClienteUsuario,
                     cotizacionData: {
-                        id_cotizacion:      nuevaCotizacion.id_cotizacion,
-                        id_solicitud:       Number(id_solicitud),
-                        valor_cotizacion:   valorNum,
-                        tiempo_estimado:    tiempo_estimado ? String(tiempo_estimado).trim() : null,
-                        incluye_materiales: Boolean(incluye_materiales),
-                        dias_garantia:      diasNum,
-                        id_tecnico:         tecnico.id_tecnico,
+                        id_cotizacion:       nuevaCotizacion.id_cotizacion,
+                        id_solicitud:        Number(id_solicitud),
+                        id_tecnico:          tecnico.id_tecnico,
+                        valor_cotizacion:    valorNum,
+                        descripcion_trabajo: descripcion ? String(descripcion).trim() : null,
+                        tiempo_estimado:     tiempo_estimado ? String(tiempo_estimado).trim() : null,
+                        estado:              'PENDIENTE',
                     },
                 });
                 addCotizacionBatch(Number(id_solicitud), idClienteUsuario);
@@ -742,9 +742,13 @@ export const aceptarCotizacion = async (req, res) => {
                 id_tecnico_ganador_usuario: tecnicoGanador?.id_usuario,
                 tecnicosRechazados: idsRechazados.filter(Boolean),
                 cotizacionData: {
-                    id_cotizacion: idCotizacion,
-                    id_solicitud:  idSolicitud,
-                    id_tecnico:    idTecnico,
+                    id_cotizacion:       idCotizacion,
+                    id_solicitud:        idSolicitud,
+                    id_tecnico:          idTecnico,
+                    valor_cotizacion:    parseFloat(cotizacion.valor_cotizacion),
+                    descripcion_trabajo: cotizacion.descripcion || null,
+                    tiempo_estimado:     cotizacion.tiempo_estimado || null,
+                    estado:              'ACEPTADA',
                 },
             });
             cancelBatch(idSolicitud);
