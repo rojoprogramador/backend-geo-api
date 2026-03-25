@@ -59,7 +59,7 @@ describe('solicitudController', () => {
     id_subcategoria: 1,
     descripcion: 'Tubería rota en el baño, necesito reparación urgente por favor.',
     latitud: 3.4516,
-    longitud: -76.5320,
+    longitud: -76.532,
     prioridad: 'URGENTE',
   };
 
@@ -101,6 +101,18 @@ describe('solicitudController', () => {
       expect(res.jsonData.data.tecnicos_notificados).toBe(1);
       expect(mockModels.TecnicoSolicitudQueue.bulkCreate).toHaveBeenCalled();
       expect(mockTransaction.commit).toHaveBeenCalled();
+    });
+
+    it('debe incluir direccion_servicio en la respuesta', async () => {
+      req.usuario = { id_usuario: 5 };
+      req.body = { ...VALID_INMEDIATA, direccion: '  Calle 5 #23-45, Cali  ' };
+      setupSuccessMocks([]);
+
+      await crearSolicitudInmediata(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(res.jsonData.data.direccion_servicio).toBe('Calle 5 #23-45, Cali');
+      expect(res.jsonData.data.fecha_programada).toBeNull();
     });
 
     it('debe crear solicitud sin técnicos disponibles → 201 PENDIENTE', async () => {
@@ -226,6 +238,17 @@ describe('solicitudController', () => {
       const err = mockHandleError.mock.calls[0][1];
       expect(err).toBeInstanceOf(ValidationError);
     });
+
+    it('debe retornar 400 si fecha_programada no es parseable', async () => {
+      req.usuario = { id_usuario: 5 };
+      req.body = { ...VALID_INMEDIATA, fecha_programada: 'no-es-fecha' };
+
+      await crearSolicitudProgramada(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+      expect(err.errors[0]).toContain('formato de fecha válido');
+    });
   });
 
   // =====================================================================
@@ -273,8 +296,12 @@ describe('solicitudController', () => {
     it('debe retornar solicitud como admin → 200', async () => {
       req.usuario = { id_usuario: 1, rol: 'ADMIN' };
       req.params = { id: '15' };
+      const solicitudData = {
+        id_solicitud: 15, id_cliente: 3, id_tecnico: null, tecnicos_notificados: [], citas: [],
+      };
       mockModels.Solicitud.findByPk.mockResolvedValue({
-        id_solicitud: 15, id_cliente: 3, id_tecnico: null, tecnicos_notificados: [],
+        ...solicitudData,
+        toJSON: () => ({ ...solicitudData }),
       });
 
       await obtenerSolicitudPorId(req, res);
@@ -310,6 +337,77 @@ describe('solicitudController', () => {
         id_solicitud: 15, id_cliente: 99, id_tecnico: null, tecnicos_notificados: [],
       });
       mockModels.Cliente.findOne.mockResolvedValue({ id_cliente: 3 }); // different from 99
+
+      await obtenerSolicitudPorId(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ForbiddenError);
+    });
+
+    it('debe retornar fecha_programada de la primera cita', async () => {
+      req.usuario = { id_usuario: 1, rol: 'ADMIN' };
+      req.params = { id: '15' };
+      const fechaCita = '2026-04-01T10:00:00.000Z';
+      const solicitudData = {
+        id_solicitud: 15, id_cliente: 3, id_tecnico: null,
+        tecnicos_notificados: [],
+        citas: [{ id_cita: 9, fecha_cita: fechaCita, id_estado: 1 }],
+      };
+      mockModels.Solicitud.findByPk.mockResolvedValue({
+        ...solicitudData,
+        toJSON: () => ({ ...solicitudData }),
+      });
+
+      await obtenerSolicitudPorId(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.jsonData.data.fecha_programada).toBe(fechaCita);
+    });
+
+    it('debe permitir acceso a técnico asignado', async () => {
+      req.usuario = { id_usuario: 10, rol: 'TECNICO' };
+      req.params = { id: '15' };
+      const solicitudData = {
+        id_solicitud: 15, id_cliente: 3, id_tecnico: 5,
+        tecnicos_notificados: [], citas: [],
+      };
+      mockModels.Solicitud.findByPk.mockResolvedValue({
+        ...solicitudData,
+        toJSON: () => ({ ...solicitudData }),
+      });
+      mockModels.Tecnico.findOne.mockResolvedValue({ id_tecnico: 5 });
+
+      await obtenerSolicitudPorId(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    it('debe permitir acceso a técnico en cola de notificados', async () => {
+      req.usuario = { id_usuario: 10, rol: 'TECNICO' };
+      req.params = { id: '15' };
+      const solicitudData = {
+        id_solicitud: 15, id_cliente: 3, id_tecnico: null,
+        tecnicos_notificados: [{ id_tecnico: 5 }], citas: [],
+      };
+      mockModels.Solicitud.findByPk.mockResolvedValue({
+        ...solicitudData,
+        toJSON: () => ({ ...solicitudData }),
+      });
+      mockModels.Tecnico.findOne.mockResolvedValue({ id_tecnico: 5 });
+
+      await obtenerSolicitudPorId(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    it('debe retornar 403 si técnico no tiene acceso', async () => {
+      req.usuario = { id_usuario: 10, rol: 'TECNICO' };
+      req.params = { id: '15' };
+      mockModels.Solicitud.findByPk.mockResolvedValue({
+        id_solicitud: 15, id_cliente: 3, id_tecnico: 99,
+        tecnicos_notificados: [{ id_tecnico: 88 }],
+      });
+      mockModels.Tecnico.findOne.mockResolvedValue({ id_tecnico: 5 }); // not 99 or 88
 
       await obtenerSolicitudPorId(req, res);
 
@@ -446,6 +544,40 @@ describe('solicitudController', () => {
 
       const err = mockHandleError.mock.calls[0][1];
       expect(err).toBeInstanceOf(ValidationError);
+    });
+
+    it('debe retornar 400 si solicitud ya está COMPLETADA', async () => {
+      req.usuario = { id_usuario: 5 };
+      req.params = { id: '15' };
+      req.body = {};
+      mockModels.Cliente.findOne.mockResolvedValue({ id_cliente: 3 });
+      mockModels.Solicitud.findByPk.mockResolvedValue({
+        id_solicitud: 15, id_cliente: 3, id_estado: 6,
+        citas: [], tecnicos_notificados: [],
+      });
+
+      await cancelarSolicitud(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+      expect(err.errors[0]).toContain('COMPLETADA');
+    });
+
+    it('debe retornar 400 si solicitud ya está CANCELADA', async () => {
+      req.usuario = { id_usuario: 5 };
+      req.params = { id: '15' };
+      req.body = {};
+      mockModels.Cliente.findOne.mockResolvedValue({ id_cliente: 3 });
+      mockModels.Solicitud.findByPk.mockResolvedValue({
+        id_solicitud: 15, id_cliente: 3, id_estado: 7,
+        citas: [], tecnicos_notificados: [],
+      });
+
+      await cancelarSolicitud(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+      expect(err.errors[0]).toContain('CANCELADA');
     });
   });
 });

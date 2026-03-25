@@ -155,7 +155,7 @@ describe('clienteController', () => {
     it('3. Invalid name format → 400', async () => {
       req.body = {
         ...validData,
-        nombre: 'Mar', // Less than 5 characters
+        nombre: 'A', // Less than 2 characters
       };
 
       await registrarCliente(req, res);
@@ -163,7 +163,7 @@ describe('clienteController', () => {
       expect(mockTransaction.rollback).toHaveBeenCalled();
       const errorArg = mockHandleError.mock.calls[0][1];
       expect(errorArg).toBeInstanceOf(ValidationError);
-      expect(errorArg.errors).toContain('El nombre solo puede contener letras y espacios, entre 5 y 100 caracteres');
+      expect(errorArg.errors).toContain('El nombre solo puede contener letras y espacios, entre 2 y 100 caracteres');
     });
 
     it('4. Invalid email format → 400', async () => {

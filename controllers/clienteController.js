@@ -26,8 +26,8 @@ import { obtenerCliente } from '../utils/profileHelpers.js';
  *       6. Retorna los datos públicos del nuevo cliente (sin contraseña).
  *
  *       **Reglas de validación:**
- *       - `nombre`: letras y espacios (incluyendo tildes/ñ), entre 5 y 100 caracteres.
- *       - `apellido`: letras y espacios (incluyendo tildes/ñ), entre 5 y 100 caracteres.
+ *       - `nombre`: letras y espacios (incluyendo tildes/ñ), entre 2 y 100 caracteres.
+ *       - `apellido`: letras y espacios (incluyendo tildes/ñ), entre 2 y 100 caracteres.
  *       - `num_identificacion`: solo dígitos, entre 6 y 12 dígitos.
  *       - `correo_electronico`: formato de email válido, único en el sistema.
  *       - `telefono`: exactamente 10 dígitos comenzando con `3` (ej: `3001234567`).
@@ -190,11 +190,11 @@ export const registrarCliente = async (req, res) => {
         const erroresFormato = [];
 
         if (!REGEX_NOMBRE.test(nombre.trim())) {
-            erroresFormato.push('El nombre solo puede contener letras y espacios, entre 5 y 100 caracteres');
+            erroresFormato.push('El nombre solo puede contener letras y espacios, entre 2 y 100 caracteres');
         }
 
         if (!REGEX_NOMBRE.test(apellido.trim())) {
-            erroresFormato.push('El apellido solo puede contener letras y espacios, entre 5 y 100 caracteres');
+            erroresFormato.push('El apellido solo puede contener letras y espacios, entre 2 y 100 caracteres');
         }
 
         if (!REGEX_CORREO.test(correo_electronico)) {

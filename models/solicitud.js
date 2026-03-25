@@ -35,6 +35,11 @@ const Solicitud = sequelize.define('Solicitud', {
         allowNull: false,
         defaultValue: 'PROGRAMADO'
     },
+    direccion_servicio: {
+        type: DataTypes.STRING(500),
+        allowNull: true,
+        defaultValue: null
+    },
 
     // Definición explícita de llaves foráneas
     id_cliente: {

@@ -46,16 +46,16 @@ const router = express.Router();
  *       properties:
  *         nombre:
  *           type: string
- *           minLength: 5
+ *           minLength: 2
  *           maxLength: 100
  *           example: "Andres Felipe"
- *           description: "Solo letras y espacios (incluyendo tildes), entre 5 y 100 caracteres"
+ *           description: "Solo letras y espacios (incluyendo tildes), entre 2 y 100 caracteres"
  *         apellido:
  *           type: string
- *           minLength: 5
+ *           minLength: 2
  *           maxLength: 100
  *           example: "Martinez Herrera"
- *           description: "Solo letras y espacios (incluyendo tildes), entre 5 y 100 caracteres"
+ *           description: "Solo letras y espacios (incluyendo tildes), entre 2 y 100 caracteres"
  *         correo_electronico:
  *           type: string
  *           format: email
