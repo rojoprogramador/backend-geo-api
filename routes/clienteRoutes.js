@@ -24,13 +24,13 @@ const router = express.Router();
  *       properties:
  *         nombre:
  *           type: string
- *           minLength: 5
+ *           minLength: 2
  *           maxLength: 100
  *           example: "María Alejandra"
  *           description: "Solo letras y espacios (incluyendo tildes y ñ)"
  *         apellido:
  *           type: string
- *           minLength: 5
+ *           minLength: 2
  *           maxLength: 100
  *           example: "González Ospina"
  *           description: "Solo letras y espacios (incluyendo tildes y ñ)"

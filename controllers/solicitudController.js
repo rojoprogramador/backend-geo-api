@@ -59,10 +59,10 @@ const notificarTecnicosWS = async ({ nuevaSolicitud, cliente, id_subcategoria, s
             tecnicos: tecnicosEncontrados.map((tec) => ({
                 id_tecnico:       tec.id_tecnico,
                 id_usuario:       tec.id_usuario,
-                distancia_metros: parseFloat(tec.distancia_metros),
+                distancia_metros: Number.parseFloat(tec.distancia_metros),
                 priority_score:   calcularPriorityScore(
-                    parseFloat(tec.distancia_metros),
-                    parseFloat(tec.prom_calificacion)
+                    Number.parseFloat(tec.distancia_metros),
+                    Number.parseFloat(tec.prom_calificacion)
                 ),
             })),
         });
@@ -76,12 +76,12 @@ const notificarTecnicosWS = async ({ nuevaSolicitud, cliente, id_subcategoria, s
 // ---------------------------------------------------------------------------
 const validarCamposSolicitud = (latitud, longitud, id_subcategoria, descripcion, prioridad) => {
     const erroresFormato = [];
-    const latNum = parseFloat(latitud);
-    const lngNum = parseFloat(longitud);
+    const latNum = Number.parseFloat(latitud);
+    const lngNum = Number.parseFloat(longitud);
 
-    if (isNaN(latNum) || latNum < -90 || latNum > 90)
+    if (Number.isNaN(latNum) || latNum < -90 || latNum > 90)
         erroresFormato.push('La latitud debe ser un número entre -90 y 90');
-    if (isNaN(lngNum) || lngNum < -180 || lngNum > 180)
+    if (Number.isNaN(lngNum) || lngNum < -180 || lngNum > 180)
         erroresFormato.push('La longitud debe ser un número entre -180 y 180');
     if (!Number.isInteger(Number(id_subcategoria)) || Number(id_subcategoria) < 1)
         erroresFormato.push('El id_subcategoria debe ser un entero positivo');
@@ -157,6 +157,40 @@ const crearEntradasCola = async (tecnicosEncontrados, idSolicitud, transaction, 
 
     logger.info(contexto + ': ' + tecnicosEncontrados.length + ' técnicos encolados para solicitud ' + idSolicitud);
 };
+
+// ---------------------------------------------------------------------------
+// Helper: construye el objeto de datos para Solicitud.create (inmediata y programada)
+// ---------------------------------------------------------------------------
+const buildSolicitudData = ({ descTrimmed, imagenes, lngNum, latNum, direccionServicio, cliente, id_subcategoria, idEstadoInicial, prioridad, tipo_servicio }) => ({
+    descripcion:         descTrimmed,
+    imagenes:            imagenes || null,
+    ubicacion_solicitud: {
+        type:        'Point',
+        coordinates: [lngNum, latNum],
+    },
+    direccion_servicio:  direccionServicio,
+    id_cliente:          cliente.id_cliente,
+    id_subcategoria:     Number(id_subcategoria),
+    id_estado:           idEstadoInicial,
+    prioridad,
+    tipo_servicio,
+});
+
+// ---------------------------------------------------------------------------
+// Helper: construye el objeto data de la respuesta 201 para solicitudes creadas
+// ---------------------------------------------------------------------------
+const buildCrearResponse = ({ nuevaSolicitud, tipo_servicio, idEstadoInicial, direccionServicio, tecnicosEncontrados, radio_usado_km, extra = {} }) => ({
+    id_solicitud:        nuevaSolicitud.id_solicitud,
+    tipo_servicio,
+    id_estado:           idEstadoInicial,
+    prioridad:           nuevaSolicitud.prioridad,
+    id_subcategoria:     nuevaSolicitud.id_subcategoria,
+    fecha_solicitud:     nuevaSolicitud.fecha_solicitud,
+    direccion_servicio:  direccionServicio,
+    ...extra,
+    tecnicos_notificados: tecnicosEncontrados.length,
+    ...(radio_usado_km ? { radio_busqueda_km: radio_usado_km } : {}),
+});
 
 // ---------------------------------------------------------------------------
 // Radios de búsqueda expandidos (km) cuando no se encuentran técnicos
@@ -354,6 +388,7 @@ export const crearSolicitudInmediata = async (req, res) => {
             descripcion,
             latitud,
             longitud,
+            direccion,
             prioridad = 'MEDIA',
             imagenes,
         } = req.body;
@@ -396,23 +431,17 @@ export const crearSolicitudInmediata = async (req, res) => {
             ? ESTADO_BUSCANDO_TECNICOS
             : ESTADO_PENDIENTE;
 
+        const direccionServicio = direccion?.trim() || null;
+
         // ----------------------------------------------------------------
         // 8. Crear la Solicitud con ubicación PostGIS
         // ----------------------------------------------------------------
         const nuevaSolicitud = await Solicitud.create(
-            {
-                descripcion:          descTrimmed,
-                imagenes:             imagenes || null,
-                ubicacion_solicitud:  {
-                    type:        'Point',
-                    coordinates: [lngNum, latNum],
-                },
-                id_cliente:     cliente.id_cliente,
-                id_subcategoria: Number(id_subcategoria),
-                id_estado:      idEstadoInicial,
-                prioridad,
-                tipo_servicio:  'INMEDIATO',
-            },
+            buildSolicitudData({
+                descTrimmed, imagenes, lngNum, latNum, direccionServicio,
+                cliente, id_subcategoria, idEstadoInicial, prioridad,
+                tipo_servicio: 'INMEDIATO',
+            }),
             { transaction: t }
         );
 
@@ -433,6 +462,7 @@ export const crearSolicitudInmediata = async (req, res) => {
         await notificarTecnicosWS({
             nuevaSolicitud, cliente, id_subcategoria, subcategoria,
             descTrimmed, tipo_solicitud: 'INMEDIATA', prioridad, tecnicosEncontrados,
+            extra: { direccion_servicio: direccionServicio },
         });
 
         const mensajeRespuesta = tecnicosEncontrados.length > 0
@@ -442,16 +472,11 @@ export const crearSolicitudInmediata = async (req, res) => {
         return res.status(201).json({
             success: true,
             message: mensajeRespuesta,
-            data: {
-                id_solicitud:        nuevaSolicitud.id_solicitud,
-                tipo_servicio:       'INMEDIATO',
-                id_estado:           idEstadoInicial,
-                prioridad:           nuevaSolicitud.prioridad,
-                id_subcategoria:     nuevaSolicitud.id_subcategoria,
-                fecha_solicitud:     nuevaSolicitud.fecha_solicitud,
-                tecnicos_notificados: tecnicosEncontrados.length,
-                ...(radio_usado_km ? { radio_busqueda_km: radio_usado_km } : {}),
-            },
+            data: buildCrearResponse({
+                nuevaSolicitud, tipo_servicio: 'INMEDIATO', idEstadoInicial,
+                direccionServicio, tecnicosEncontrados, radio_usado_km,
+                extra: { fecha_programada: null },
+            }),
         });
 
     } catch (error) {
@@ -552,6 +577,7 @@ export const crearSolicitudProgramada = async (req, res) => {
             descripcion,
             latitud,
             longitud,
+            direccion,
             fecha_programada,
             prioridad = 'MEDIA',
             imagenes,
@@ -573,7 +599,7 @@ export const crearSolicitudProgramada = async (req, res) => {
 
         // Validar fecha_programada: parseable y al menos 24 horas en el futuro
         const fechaProgramadaDate = new Date(fecha_programada);
-        if (isNaN(fechaProgramadaDate.getTime())) {
+        if (Number.isNaN(fechaProgramadaDate.getTime())) {
             erroresFormato.push('La fecha_programada no tiene un formato de fecha válido (use ISO 8601: YYYY-MM-DDTHH:mm:ss)');
         } else {
             const ahora            = new Date();
@@ -610,23 +636,17 @@ export const crearSolicitudProgramada = async (req, res) => {
             ? ESTADO_BUSCANDO_TECNICOS
             : ESTADO_PENDIENTE;
 
+        const direccionServicio = direccion?.trim() || null;
+
         // ----------------------------------------------------------------
         // 8. Crear la Solicitud
         // ----------------------------------------------------------------
         const nuevaSolicitud = await Solicitud.create(
-            {
-                descripcion:         descTrimmed,
-                imagenes:            imagenes || null,
-                ubicacion_solicitud: {
-                    type:        'Point',
-                    coordinates: [lngNum, latNum],
-                },
-                id_cliente:      cliente.id_cliente,
-                id_subcategoria: Number(id_subcategoria),
-                id_estado:       idEstadoInicial,
-                prioridad,
-                tipo_servicio:   'PROGRAMADO',
-            },
+            buildSolicitudData({
+                descTrimmed, imagenes, lngNum, latNum, direccionServicio,
+                cliente, id_subcategoria, idEstadoInicial, prioridad,
+                tipo_servicio: 'PROGRAMADO',
+            }),
             { transaction: t }
         );
 
@@ -668,7 +688,10 @@ export const crearSolicitudProgramada = async (req, res) => {
         await notificarTecnicosWS({
             nuevaSolicitud, cliente, id_subcategoria, subcategoria,
             descTrimmed, tipo_solicitud: 'PROGRAMADA', prioridad, tecnicosEncontrados,
-            extra: { fecha_programada: fechaProgramadaDate.toISOString() },
+            extra: {
+                fecha_programada: fechaProgramadaDate.toISOString(),
+                direccion_servicio: direccionServicio,
+            },
         });
 
         const mensajeRespuesta = tecnicosEncontrados.length > 0
@@ -678,21 +701,14 @@ export const crearSolicitudProgramada = async (req, res) => {
         return res.status(201).json({
             success: true,
             message: mensajeRespuesta,
-            data: {
-                id_solicitud:        nuevaSolicitud.id_solicitud,
-                tipo_servicio:       'PROGRAMADO',
-                id_estado:           idEstadoInicial,
-                prioridad:           nuevaSolicitud.prioridad,
-                id_subcategoria:     nuevaSolicitud.id_subcategoria,
-                fecha_solicitud:     nuevaSolicitud.fecha_solicitud,
-                cita: {
-                    id_cita:    nuevaCita.id_cita,
-                    fecha_cita: nuevaCita.fecha_cita,
-                    id_estado:  nuevaCita.id_estado,
+            data: buildCrearResponse({
+                nuevaSolicitud, tipo_servicio: 'PROGRAMADO', idEstadoInicial,
+                direccionServicio, tecnicosEncontrados, radio_usado_km,
+                extra: {
+                    fecha_programada: fechaProgramadaDate.toISOString(),
+                    cita: { id_cita: nuevaCita.id_cita, fecha_cita: nuevaCita.fecha_cita, id_estado: nuevaCita.id_estado },
                 },
-                tecnicos_notificados: tecnicosEncontrados.length,
-                ...(radio_usado_km ? { radio_busqueda_km: radio_usado_km } : {}),
-            },
+            }),
         });
 
     } catch (error) {
@@ -792,8 +808,8 @@ export const obtenerMisSolicitudes = async (req, res) => {
         // ----------------------------------------------------------------
         // 1. Parsear parámetros de paginación y filtrado
         // ----------------------------------------------------------------
-        const page         = Math.max(1, parseInt(req.query.page)  || 1);
-        const limit        = Math.min(50, Math.max(1, parseInt(req.query.limit) || 10));
+        const page         = Math.max(1, Number.parseInt(req.query.page)  || 1);
+        const limit        = Math.min(50, Math.max(1, Number.parseInt(req.query.limit) || 10));
         const offset       = (page - 1) * limit;
         const tipoServicio = req.query.tipo_servicio;
 
@@ -928,7 +944,7 @@ export const obtenerMisSolicitudes = async (req, res) => {
  */
 export const obtenerSolicitudPorId = async (req, res) => {
     try {
-        const id = parseInt(req.params.id);
+        const id = Number.parseInt(req.params.id);
 
         if (!id || id < 1) {
             throw new ValidationError('Error de validación', [
@@ -1032,10 +1048,18 @@ export const obtenerSolicitudPorId = async (req, res) => {
             `id_usuario ${id_usuario} (${rol})`
         );
 
+        // ----------------------------------------------------------------
+        // 3. Construir respuesta con campos esperados por el frontend
+        //    fecha_programada se deriva de la primera cita asociada
+        // ----------------------------------------------------------------
+        const solicitudJSON = solicitud.toJSON();
+        const primeraCita = solicitud.citas?.[0] ?? null;
+        solicitudJSON.fecha_programada = primeraCita?.fecha_cita ?? null;
+
         return res.status(200).json({
             success: true,
             message: 'Solicitud obtenida exitosamente',
-            data: solicitud,
+            data: solicitudJSON,
         });
 
     } catch (error) {
@@ -1125,8 +1149,8 @@ export const obtenerSolicitudesTecnico = async (req, res) => {
         // ----------------------------------------------------------------
         // 1. Parsear parámetros de paginación
         // ----------------------------------------------------------------
-        const page   = Math.max(1, parseInt(req.query.page)  || 1);
-        const limit  = Math.min(50, Math.max(1, parseInt(req.query.limit) || 10));
+        const page   = Math.max(1, Number.parseInt(req.query.page)  || 1);
+        const limit  = Math.min(50, Math.max(1, Number.parseInt(req.query.limit) || 10));
         const offset = (page - 1) * limit;
 
         // ----------------------------------------------------------------
@@ -1393,7 +1417,7 @@ export const cancelarSolicitud = async (req, res) => {
         // ----------------------------------------------------------------
         // 1. Validar el parámetro de ruta
         // ----------------------------------------------------------------
-        const id = parseInt(req.params.id);
+        const id = Number.parseInt(req.params.id);
 
         if (!id || id < 1) {
             await t.rollback();
@@ -1455,10 +1479,8 @@ export const cancelarSolicitud = async (req, res) => {
         if (estadosNoCancelables.includes(solicitud.id_estado)) {
             await t.rollback();
 
-            const descripcionEstado =
-                solicitud.id_estado === 5          ? 'EN_PROCESO' :
-                solicitud.id_estado === ESTADO_COMPLETADA ? 'COMPLETADA'  :
-                                                            'CANCELADA';
+            const MAPA_ESTADOS_NO_CANCELABLES = { 5: 'EN_PROCESO', [ESTADO_COMPLETADA]: 'COMPLETADA', [ESTADO_CANCELADA]: 'CANCELADA' };
+            const descripcionEstado = MAPA_ESTADOS_NO_CANCELABLES[solicitud.id_estado];
 
             throw new ValidationError('La solicitud no se puede cancelar', [
                 `La solicitud está en estado ${descripcionEstado} y no puede ser cancelada`,

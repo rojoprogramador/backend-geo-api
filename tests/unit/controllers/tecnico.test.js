@@ -118,7 +118,7 @@ describe('tecnicoController', () => {
     });
 
     it('debe retornar 400 con formato de nombre inválido', async () => {
-      req.body = { ...VALID_BODY, nombre: 'AB' }; // < 5 chars
+      req.body = { ...VALID_BODY, nombre: 'A' }; // < 2 chars
 
       await registrarTecnico(req, res);
 

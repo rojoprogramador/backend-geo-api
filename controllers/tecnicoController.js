@@ -160,11 +160,11 @@ export const registrarTecnico = async (req, res) => {
         const erroresFormato = [];
 
         if (!REGEX_NOMBRE.test(nombre.trim())) {
-            erroresFormato.push('El nombre solo puede contener letras y espacios, entre 5 y 100 caracteres');
+            erroresFormato.push('El nombre solo puede contener letras y espacios, entre 2 y 100 caracteres');
         }
 
         if (!REGEX_NOMBRE.test(apellido.trim())) {
-            erroresFormato.push('El apellido solo puede contener letras y espacios, entre 5 y 100 caracteres');
+            erroresFormato.push('El apellido solo puede contener letras y espacios, entre 2 y 100 caracteres');
         }
 
         if (!REGEX_CORREO.test(correo_electronico)) {

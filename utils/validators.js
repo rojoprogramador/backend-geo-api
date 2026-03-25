@@ -2,7 +2,7 @@
 // Expresiones regulares y funciones de validación compartidas
 // ---------------------------------------------------------------------------
 
-export const REGEX_NOMBRE    = /^[a-zA-ZÀ-ÿ\u00f1\u00d1\s]{5,100}$/;
+export const REGEX_NOMBRE    = /^[a-zA-ZÀ-ÿ\u00f1\u00d1\s]{2,100}$/;
 export const REGEX_DOCUMENTO = /^\d{6,12}$/;
 export const REGEX_CORREO    = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
 export const REGEX_TELEFONO  = /^3\d{9}$/;          // 10 dígitos que empiezan con 3
