@@ -54,6 +54,12 @@ const Tecnico = sequelize.define('Tecnico', {
     validado_por: {
         type: DataTypes.INTEGER,
         allowNull: true
+    },
+    tipo_cobertura: {
+        type: DataTypes.STRING(10),
+        allowNull: false,
+        defaultValue: 'RADIO',
+        validate: { isIn: [['RADIO', 'CIUDAD']] }
     }
 }, {
     tableName: 'Tecnico',

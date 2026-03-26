@@ -3,7 +3,7 @@ import { createReqMock, createResMock } from '../../mocks/models.js';
 
 // --- Inline Mocks ---
 const mockModels = {
-  sequelize: { transaction: jest.fn(), query: jest.fn() },
+  sequelize: { transaction: jest.fn(), query: jest.fn(), fn: jest.fn(), col: jest.fn() },
   Cliente: { findOne: jest.fn() },
   Tecnico: { findOne: jest.fn() },
   Solicitud: { create: jest.fn(), findByPk: jest.fn(), findAndCountAll: jest.fn() },
@@ -39,6 +39,9 @@ jest.unstable_mockModule('../../../models/index.js', () => mockModels);
 jest.unstable_mockModule('../../../utils/errorHandler.js', () => ({ handleError: mockHandleError }));
 jest.unstable_mockModule('../../../utils/logger.js', () => ({ default: mockLogger }));
 jest.unstable_mockModule('../../../sockets/services/socketEmitter.js', () => mockSocketEmitter);
+
+const mockCooldownManager = { filtrarSinCooldown: jest.fn((ids) => ids) };
+jest.unstable_mockModule('../../../utils/cooldownManager.js', () => mockCooldownManager);
 
 const { ValidationError, NotFoundError, ForbiddenError } =
   await import('../../../utils/errors/AppError.js');

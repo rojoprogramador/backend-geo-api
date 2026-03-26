@@ -16,6 +16,7 @@ import { handleError } from '../utils/errorHandler.js';
 import { ValidationError, NotFoundError, ForbiddenError } from '../utils/errors/AppError.js';
 import logger from '../utils/logger.js';
 import { obtenerCliente, obtenerTecnico } from '../utils/profileHelpers.js';
+import { filtrarSinCooldown } from '../utils/cooldownManager.js';
 
 // ---------------------------------------------------------------------------
 // Constantes de estados de solicitud (sincronizadas con seeders)
@@ -140,10 +141,22 @@ const validarPresenciaCampos = ({ id_subcategoria, descripcion, latitud, longitu
 // ---------------------------------------------------------------------------
 // Helper: crea entradas en TecnicoSolicitudQueue para técnicos encontrados
 // ---------------------------------------------------------------------------
-const crearEntradasCola = async (tecnicosEncontrados, idSolicitud, transaction, contexto) => {
+const crearEntradasCola = async (tecnicosEncontrados, idSolicitud, transaction, contexto, { esInmediata = false } = {}) => {
     if (tecnicosEncontrados.length === 0) return;
 
-    const entradasCola = tecnicosEncontrados.map((tecnico) => ({
+    // Filtrar técnicos con cooldown activo (solo solicitudes inmediatas)
+    let tecnicos = tecnicosEncontrados;
+    if (esInmediata) {
+        const idsSinCooldown = filtrarSinCooldown(tecnicos.map(t => t.id_tecnico));
+        const filtrados = tecnicos.length - idsSinCooldown.length;
+        if (filtrados > 0) {
+            tecnicos = tecnicos.filter(t => idsSinCooldown.includes(t.id_tecnico));
+            logger.info(`${contexto}: ${filtrados} técnico(s) filtrados por cooldown`);
+        }
+        if (tecnicos.length === 0) return;
+    }
+
+    const entradasCola = tecnicos.map((tecnico) => ({
         id_solicitud:     idSolicitud,
         id_tecnico:       tecnico.id_tecnico,
         estado_respuesta: 'NOTIFICADO',
@@ -155,7 +168,7 @@ const crearEntradasCola = async (tecnicosEncontrados, idSolicitud, transaction, 
 
     await TecnicoSolicitudQueue.bulkCreate(entradasCola, { transaction });
 
-    logger.info(contexto + ': ' + tecnicosEncontrados.length + ' técnicos encolados para solicitud ' + idSolicitud);
+    logger.info(contexto + ': ' + tecnicos.length + ' técnicos encolados para solicitud ' + idSolicitud);
 };
 
 // ---------------------------------------------------------------------------
@@ -199,12 +212,18 @@ const buildCrearResponse = ({ nuevaSolicitud, tipo_servicio, idEstadoInicial, di
 const RADIOS_EXPANSION_KM = [15, 30, 50];
 
 // ---------------------------------------------------------------------------
-// Helper: busca técnicos cercanos con expansión progresiva de radio.
+// Helper: busca técnicos cercanos combinando dos modos de cobertura:
 //
-// 1) Busca técnicos cuya ubicacion_base esté dentro de SU PROPIO
-//    radio_cobertura_km (respeta la preferencia del técnico).
-// 2) Si no encuentra, expande el radio a 15 km, 30 km, 50 km
-//    (independiente del radio configurado por el técnico).
+// MODO RADIO (tipo_cobertura = 'RADIO' o NULL — backward compatible):
+//   1) Busca dentro del radio_cobertura_km propio de cada técnico.
+//   2) Si no encuentra, expande progresivamente a 15→30→50 km.
+//
+// MODO CIUDAD (tipo_cobertura = 'CIUDAD'):
+//   1) Determina qué ciudades contienen el punto de la solicitud
+//      (Ciudad.ubicacion_centro + radio_ciudad_km).
+//   2) Busca técnicos registrados en esas ciudades via CiudadTecnico.
+//
+// Combina ambos resultados, elimina duplicados y ordena por distancia.
 // ---------------------------------------------------------------------------
 const buscarTecnicosCercanos = async ({ latNum, lngNum, id_subcategoria, filtroInmediato, transaction }) => {
     const filtroInmediatoSQL = filtroInmediato
@@ -216,13 +235,21 @@ const buscarTecnicosCercanos = async ({ latNum, lngNum, id_subcategoria, filtroI
            )`
         : '';
 
-    const condicionesBase = `
+    const baseReplacements = {
+        longitud:        lngNum,
+        latitud:         latNum,
+        id_subcategoria: Number(id_subcategoria),
+    };
+
+    // ── PASO 1: Técnicos modo RADIO ──
+    const condicionesRadio = `
         t.estado_validacion = 'ACTIVO'
         AND t.ubicacion_base IS NOT NULL
+        AND (t.tipo_cobertura = 'RADIO' OR t.tipo_cobertura IS NULL)
         AND e.id_subcategoria = :id_subcategoria
         ${filtroInmediatoSQL}`;
 
-    const buildQuery = (radioCondicion) => `
+    const buildQueryRadio = (radioCondicion) => `
         SELECT t.id_tecnico,
                t.id_usuario,
                t.prom_calificacion,
@@ -233,20 +260,14 @@ const buscarTecnicosCercanos = async ({ latNum, lngNum, id_subcategoria, filtroI
                ) AS distancia_metros
         FROM "Tecnico" t
         INNER JOIN "Especialidad" e ON t.id_tecnico = e.id_tecnico
-        WHERE ${condicionesBase}
+        WHERE ${condicionesRadio}
           AND ${radioCondicion}
         ORDER BY distancia_metros ASC, t.prom_calificacion DESC
         LIMIT 10`;
 
-    const baseReplacements = {
-        longitud:        lngNum,
-        latitud:         latNum,
-        id_subcategoria: Number(id_subcategoria),
-    };
-
-    // Paso 1: buscar dentro del radio propio de cada técnico
-    let tecnicos = await sequelize.query(
-        buildQuery(`ST_DWithin(
+    // 1a) Buscar dentro del radio propio de cada técnico
+    let tecnicosRadio = await sequelize.query(
+        buildQueryRadio(`ST_DWithin(
             t.ubicacion_base::geography,
             ST_SetSRID(ST_MakePoint(:longitud, :latitud), 4326)::geography,
             t.radio_cobertura_km * 1000
@@ -254,37 +275,94 @@ const buscarTecnicosCercanos = async ({ latNum, lngNum, id_subcategoria, filtroI
         { replacements: baseReplacements, type: QueryTypes.SELECT, transaction }
     );
 
-    if (tecnicos.length > 0) return { tecnicos, radio_usado_km: null };
+    let radioUsado = null;
 
-    // Paso 2: expandir radio progresivamente
-    for (const radioKm of RADIOS_EXPANSION_KM) {
-        tecnicos = await sequelize.query(
-            buildQuery(`ST_DWithin(
-                t.ubicacion_base::geography,
-                ST_SetSRID(ST_MakePoint(:longitud, :latitud), 4326)::geography,
-                :radio_metros
-            )`),
-            {
-                replacements: { ...baseReplacements, radio_metros: radioKm * 1000 },
-                type: QueryTypes.SELECT,
-                transaction,
-            }
-        );
-
-        if (tecnicos.length > 0) {
-            logger.info(
-                `buscarTecnicosCercanos: ${tecnicos.length} técnicos encontrados ` +
-                `con radio expandido de ${radioKm}km`
+    // 1b) Expansión progresiva si no encuentra
+    if (tecnicosRadio.length === 0) {
+        for (const radioKm of RADIOS_EXPANSION_KM) {
+            tecnicosRadio = await sequelize.query(
+                buildQueryRadio(`ST_DWithin(
+                    t.ubicacion_base::geography,
+                    ST_SetSRID(ST_MakePoint(:longitud, :latitud), 4326)::geography,
+                    :radio_metros
+                )`),
+                {
+                    replacements: { ...baseReplacements, radio_metros: radioKm * 1000 },
+                    type: QueryTypes.SELECT,
+                    transaction,
+                }
             );
-            return { tecnicos, radio_usado_km: radioKm };
+
+            if (tecnicosRadio.length > 0) {
+                radioUsado = radioKm;
+                logger.info(
+                    `buscarTecnicosCercanos: ${tecnicosRadio.length} técnicos RADIO ` +
+                    `encontrados con radio expandido de ${radioKm}km`
+                );
+                break;
+            }
         }
     }
 
-    logger.info(
-        `buscarTecnicosCercanos: Sin técnicos incluso con radio máximo ` +
-        `de ${RADIOS_EXPANSION_KM.at(-1)}km`
+    // ── PASO 2: Técnicos modo CIUDAD ──
+    const tecnicosCiudad = await sequelize.query(`
+        SELECT DISTINCT ON (t.id_tecnico)
+               t.id_tecnico,
+               t.id_usuario,
+               t.prom_calificacion,
+               t.radio_cobertura_km,
+               ST_Distance(
+                   c.ubicacion_centro::geography,
+                   ST_SetSRID(ST_MakePoint(:longitud, :latitud), 4326)::geography
+               ) AS distancia_metros
+        FROM "Tecnico" t
+        INNER JOIN "CiudadTecnico" ct ON t.id_tecnico = ct.id_tecnico
+        INNER JOIN "Ciudad" c ON ct.id_ciudad = c.id_ciudad
+        INNER JOIN "Especialidad" e ON t.id_tecnico = e.id_tecnico
+        WHERE t.tipo_cobertura = 'CIUDAD'
+          AND t.estado_validacion = 'ACTIVO'
+          AND c.ubicacion_centro IS NOT NULL
+          AND e.id_subcategoria = :id_subcategoria
+          AND ST_DWithin(
+              c.ubicacion_centro::geography,
+              ST_SetSRID(ST_MakePoint(:longitud, :latitud), 4326)::geography,
+              c.radio_ciudad_km * 1000
+          )
+          ${filtroInmediatoSQL}
+        ORDER BY t.id_tecnico, distancia_metros ASC
+        LIMIT 10`,
+        { replacements: baseReplacements, type: QueryTypes.SELECT, transaction }
     );
-    return { tecnicos: [], radio_usado_km: null };
+
+    if (tecnicosCiudad.length > 0) {
+        logger.info(`buscarTecnicosCercanos: ${tecnicosCiudad.length} técnicos CIUDAD encontrados`);
+    }
+
+    // ── PASO 3: Combinar, deduplicar, ordenar ──
+    const vistos = new Set();
+    const combinados = [];
+    for (const t of [...tecnicosRadio, ...tecnicosCiudad]) {
+        if (vistos.has(t.id_tecnico)) continue;
+        vistos.add(t.id_tecnico);
+        combinados.push(t);
+    }
+
+    combinados.sort((a, b) => {
+        const distDiff = Number(a.distancia_metros) - Number(b.distancia_metros);
+        if (distDiff !== 0) return distDiff;
+        return Number(b.prom_calificacion) - Number(a.prom_calificacion);
+    });
+
+    const tecnicos = combinados.slice(0, 10);
+
+    if (tecnicos.length === 0) {
+        logger.info(
+            `buscarTecnicosCercanos: Sin técnicos (RADIO ni CIUDAD) ` +
+            `incluso con radio máximo de ${RADIOS_EXPANSION_KM.at(-1)}km`
+        );
+    }
+
+    return { tecnicos, radio_usado_km: radioUsado };
 };
 
 // ---------------------------------------------------------------------------
@@ -454,7 +532,7 @@ export const crearSolicitudInmediata = async (req, res) => {
         // ----------------------------------------------------------------
         // 9. Crear entradas en la cola para cada técnico encontrado
         // ----------------------------------------------------------------
-        await crearEntradasCola(tecnicosEncontrados, nuevaSolicitud.id_solicitud, t, 'crearSolicitudInmediata');
+        await crearEntradasCola(tecnicosEncontrados, nuevaSolicitud.id_solicitud, t, 'crearSolicitudInmediata', { esInmediata: true });
 
         await t.commit();
 
@@ -956,7 +1034,13 @@ export const obtenerSolicitudPorId = async (req, res) => {
         // 1. Buscar la solicitud con todos sus includes
         // ----------------------------------------------------------------
         const solicitud = await Solicitud.findByPk(id, {
-            attributes: { exclude: ['ubicacion_solicitud'] },
+            attributes: {
+                exclude: ['ubicacion_solicitud'],
+                include: [
+                    [sequelize.fn('ST_Y', sequelize.col('Solicitud.ubicacion_solicitud')), 'latitud'],
+                    [sequelize.fn('ST_X', sequelize.col('Solicitud.ubicacion_solicitud')), 'longitud'],
+                ],
+            },
             include: [
                 {
                     model: EstadoSolicitud,
@@ -977,7 +1061,7 @@ export const obtenerSolicitudPorId = async (req, res) => {
                 {
                     model: Tecnico,
                     as:    'tecnico',
-                    attributes: ['id_tecnico', 'prom_calificacion', 'radio_cobertura_km'],
+                    attributes: ['id_tecnico', 'url_foto', 'prom_calificacion', 'radio_cobertura_km'],
                     required: false,
                     include: [
                         {

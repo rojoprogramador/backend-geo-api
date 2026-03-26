@@ -607,6 +607,11 @@ export const obtenerPerfilTecnico = async (req, res) => {
  *                 maximum: 180
  *                 example: -76.5320
  *                 description: "Longitud GPS del técnico. Requiere latitud. Se usa para búsquedas PostGIS."
+ *               tipo_cobertura:
+ *                 type: string
+ *                 enum: [RADIO, CIUDAD]
+ *                 example: "RADIO"
+ *                 description: "Modo de cobertura: RADIO (por km) o CIUDAD (por ciudades registradas)"
  *           examples:
  *             toggle_disponibilidad:
  *               summary: Iniciar jornada (disponible para servicios inmediatos)
@@ -666,6 +671,10 @@ export const obtenerPerfilTecnico = async (req, res) => {
  *                     radio_cobertura_km:
  *                       type: integer
  *                       example: 15
+ *                     tipo_cobertura:
+ *                       type: string
+ *                       enum: [RADIO, CIUDAD]
+ *                       example: "RADIO"
  *                     ubicacion_base:
  *                       type: object
  *                       nullable: true
@@ -712,15 +721,15 @@ export const actualizarPerfilTecnico = async (req, res) => {
         // ----------------------------------------------------------------
         // 2. Extraer únicamente los campos editables del body
         // ----------------------------------------------------------------
-        const { telefono, correo_electronico, id_ciudad, disponible_inmediato, radio_cobertura_km, latitud, longitud } = req.body;
+        const { telefono, correo_electronico, id_ciudad, disponible_inmediato, radio_cobertura_km, latitud, longitud, tipo_cobertura } = req.body;
 
         // ----------------------------------------------------------------
         // 3. Verificar que al menos un campo editable fue enviado
         // ----------------------------------------------------------------
-        if (!telefono && !correo_electronico && id_ciudad === undefined && disponible_inmediato === undefined && radio_cobertura_km === undefined && latitud === undefined && longitud === undefined) {
+        if (!telefono && !correo_electronico && id_ciudad === undefined && disponible_inmediato === undefined && radio_cobertura_km === undefined && latitud === undefined && longitud === undefined && tipo_cobertura === undefined) {
             await t.rollback();
             throw new ValidationError('Error de validación', [
-                'Debe enviar al menos un campo para actualizar: telefono, correo_electronico, id_ciudad, disponible_inmediato, radio_cobertura_km, latitud o longitud',
+                'Debe enviar al menos un campo para actualizar: telefono, correo_electronico, id_ciudad, disponible_inmediato, radio_cobertura_km, latitud, longitud o tipo_cobertura',
             ]);
         }
 
@@ -755,6 +764,10 @@ export const actualizarPerfilTecnico = async (req, res) => {
             if (!Number.isInteger(radioNum) || radioNum < 1 || radioNum > 100) {
                 erroresFormato.push('El campo radio_cobertura_km debe ser un entero entre 1 y 100');
             }
+        }
+
+        if (tipo_cobertura !== undefined && !['RADIO', 'CIUDAD'].includes(tipo_cobertura)) {
+            erroresFormato.push('El campo tipo_cobertura debe ser RADIO o CIUDAD');
         }
 
         // Latitud y longitud deben enviarse juntas
@@ -831,6 +844,7 @@ export const actualizarPerfilTecnico = async (req, res) => {
         if (id_ciudad !== undefined)            camposTecnico.ciudad_base = Number(id_ciudad);
         if (disponible_inmediato !== undefined)  camposTecnico.disponible_inmediato = disponible_inmediato;
         if (radio_cobertura_km !== undefined)    camposTecnico.radio_cobertura_km = Number(radio_cobertura_km);
+        if (tipo_cobertura !== undefined)        camposTecnico.tipo_cobertura = tipo_cobertura;
         if (latitud !== undefined && longitud !== undefined) {
             camposTecnico.ubicacion_base = {
                 type: 'Point',
@@ -883,6 +897,7 @@ export const actualizarPerfilTecnico = async (req, res) => {
                 ciudad_base:          tecnicoActualizado?.Ciudad?.nombre_ciudad ?? null,
                 disponible_inmediato: tecnicoActualizado?.disponible_inmediato ?? null,
                 radio_cobertura_km:   tecnicoActualizado?.radio_cobertura_km ?? null,
+                tipo_cobertura:       tecnicoActualizado?.tipo_cobertura ?? 'RADIO',
                 ubicacion_base:       ubicacionResp,
             },
         });

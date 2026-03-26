@@ -18,6 +18,15 @@ const Ciudad = sequelize.define('Ciudad', {
     activo: {
         type: DataTypes.BOOLEAN,
         defaultValue: true
+    },
+    ubicacion_centro: {
+        type: DataTypes.GEOMETRY('POINT', 4326),
+        allowNull: true
+    },
+    radio_ciudad_km: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 25
     }
 }, {
     tableName: 'Ciudad',
