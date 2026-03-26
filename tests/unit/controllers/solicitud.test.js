@@ -40,6 +40,9 @@ jest.unstable_mockModule('../../../utils/errorHandler.js', () => ({ handleError:
 jest.unstable_mockModule('../../../utils/logger.js', () => ({ default: mockLogger }));
 jest.unstable_mockModule('../../../sockets/services/socketEmitter.js', () => mockSocketEmitter);
 
+const mockCooldownManager = { filtrarSinCooldown: jest.fn((ids) => ids) };
+jest.unstable_mockModule('../../../utils/cooldownManager.js', () => mockCooldownManager);
+
 const { ValidationError, NotFoundError, ForbiddenError } =
   await import('../../../utils/errors/AppError.js');
 

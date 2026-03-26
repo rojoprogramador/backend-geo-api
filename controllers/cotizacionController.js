@@ -13,6 +13,7 @@ import { handleError } from '../utils/errorHandler.js';
 import { ValidationError, NotFoundError, ForbiddenError, ConflictError } from '../utils/errors/AppError.js';
 import logger from '../utils/logger.js';
 import { obtenerCliente, obtenerTecnico } from '../utils/profileHelpers.js';
+import { setCooldown } from '../utils/cooldownManager.js';
 
 // ---------------------------------------------------------------------------
 // Constantes de estados de solicitud (sincronizadas con seeders)
@@ -322,6 +323,12 @@ export const crearCotizacion = async (req, res) => {
         }
 
         await t.commit();
+
+        // ── Cooldown: evitar saturación en solicitudes inmediatas ──
+        if (solicitud.tipo_servicio === 'INMEDIATO') {
+            setCooldown(tecnico.id_tecnico);
+            logger.info(`crearCotizacion: cooldown 90s activado para técnico ${tecnico.id_tecnico}`);
+        }
 
         // ── WebSocket: notificar al cliente en tiempo real (best-effort) ──
         try {
