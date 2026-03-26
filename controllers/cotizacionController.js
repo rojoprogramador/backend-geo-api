@@ -171,8 +171,8 @@ export const crearCotizacion = async (req, res) => {
         if (!Number.isInteger(Number(id_solicitud)) || Number(id_solicitud) < 1)
             erroresFormato.push('El id_solicitud debe ser un entero positivo');
 
-        const valorNum = parseFloat(valor_cotizacion);
-        if (isNaN(valorNum) || valorNum <= 0)
+        const valorNum = Number.parseFloat(valor_cotizacion);
+        if (Number.isNaN(valorNum) || valorNum <= 0)
             erroresFormato.push('El valor_cotizacion debe ser un número mayor a 0');
 
         if (descripcion !== undefined && descripcion !== null) {
@@ -187,8 +187,8 @@ export const crearCotizacion = async (req, res) => {
                 erroresFormato.push('El tiempo_estimado debe tener entre 1 y 100 caracteres');
         }
 
-        const diasNum = parseInt(dias_garantia);
-        if (isNaN(diasNum) || diasNum < 0 || diasNum > 365)
+        const diasNum = Number.parseInt(dias_garantia);
+        if (Number.isNaN(diasNum) || diasNum < 0 || diasNum > 365)
             erroresFormato.push('El dias_garantia debe ser un entero entre 0 y 365');
 
         if (erroresFormato.length > 0) {
@@ -456,7 +456,7 @@ export const crearCotizacion = async (req, res) => {
  */
 export const obtenerCotizacionesSolicitud = async (req, res) => {
     try {
-        const idSolicitud = parseInt(req.params.id_solicitud);
+        const idSolicitud = Number.parseInt(req.params.id_solicitud);
 
         if (!idSolicitud || idSolicitud < 1) {
             throw new ValidationError('Error de validación', [
@@ -494,7 +494,7 @@ export const obtenerCotizacionesSolicitud = async (req, res) => {
                 {
                     model: Tecnico,
                     as:    'tecnico',
-                    attributes: ['id_tecnico', 'prom_calificacion', 'radio_cobertura_km'],
+                    attributes: ['id_tecnico', 'url_foto', 'prom_calificacion', 'radio_cobertura_km'],
                     include: [
                         {
                             model: Usuario,
@@ -611,7 +611,7 @@ export const aceptarCotizacion = async (req, res) => {
     const t = await sequelize.transaction();
 
     try {
-        const idCotizacion = parseInt(req.params.id);
+        const idCotizacion = Number.parseInt(req.params.id);
 
         if (!idCotizacion || idCotizacion < 1) {
             await t.rollback();
@@ -745,7 +745,7 @@ export const aceptarCotizacion = async (req, res) => {
                     id_cotizacion:       idCotizacion,
                     id_solicitud:        idSolicitud,
                     id_tecnico:          idTecnico,
-                    valor_cotizacion:    parseFloat(cotizacion.valor_cotizacion),
+                    valor_cotizacion:    Number.parseFloat(cotizacion.valor_cotizacion),
                     descripcion_trabajo: cotizacion.descripcion || null,
                     tiempo_estimado:     cotizacion.tiempo_estimado || null,
                     estado:              'ACEPTADA',
@@ -890,7 +890,7 @@ export const rechazarCotizacion = async (req, res) => {
     const t = await sequelize.transaction();
 
     try {
-        const idCotizacion = parseInt(req.params.id);
+        const idCotizacion = Number.parseInt(req.params.id);
 
         if (!idCotizacion || idCotizacion < 1) {
             await t.rollback();

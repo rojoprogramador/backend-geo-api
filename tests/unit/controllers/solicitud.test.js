@@ -3,7 +3,7 @@ import { createReqMock, createResMock } from '../../mocks/models.js';
 
 // --- Inline Mocks ---
 const mockModels = {
-  sequelize: { transaction: jest.fn(), query: jest.fn() },
+  sequelize: { transaction: jest.fn(), query: jest.fn(), fn: jest.fn(), col: jest.fn() },
   Cliente: { findOne: jest.fn() },
   Tecnico: { findOne: jest.fn() },
   Solicitud: { create: jest.fn(), findByPk: jest.fn(), findAndCountAll: jest.fn() },

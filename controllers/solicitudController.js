@@ -956,7 +956,13 @@ export const obtenerSolicitudPorId = async (req, res) => {
         // 1. Buscar la solicitud con todos sus includes
         // ----------------------------------------------------------------
         const solicitud = await Solicitud.findByPk(id, {
-            attributes: { exclude: ['ubicacion_solicitud'] },
+            attributes: {
+                exclude: ['ubicacion_solicitud'],
+                include: [
+                    [sequelize.fn('ST_Y', sequelize.col('Solicitud.ubicacion_solicitud')), 'latitud'],
+                    [sequelize.fn('ST_X', sequelize.col('Solicitud.ubicacion_solicitud')), 'longitud'],
+                ],
+            },
             include: [
                 {
                     model: EstadoSolicitud,
@@ -977,7 +983,7 @@ export const obtenerSolicitudPorId = async (req, res) => {
                 {
                     model: Tecnico,
                     as:    'tecnico',
-                    attributes: ['id_tecnico', 'prom_calificacion', 'radio_cobertura_km'],
+                    attributes: ['id_tecnico', 'url_foto', 'prom_calificacion', 'radio_cobertura_km'],
                     required: false,
                     include: [
                         {
