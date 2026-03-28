@@ -12,6 +12,7 @@
 import logger from '../../utils/logger.js';
 import { getIO } from './socketEmitter.js';
 import { SERVER_EVENTS } from '../constants/events.js';
+import { enviarPushNotificacion } from '../../services/pushService.js';
 
 const BATCH_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 const MAX_COTIZACIONES = 5;
@@ -85,6 +86,14 @@ const closeBatch = (id_solicitud, razon) => {
     logger.info(
         `cotizacionBatcher: Batch cerrado solicitud=${id_solicitud} razon=${razon} total=${batch.count}`
     );
+
+    // ── Push notification al cliente (best-effort) ──
+    enviarPushNotificacion(batch.id_cliente_usuario, {
+        tipo: 'COTIZACIONES_LISTAS',
+        titulo: 'Cotizaciones disponibles',
+        mensaje: `Ya tienes ${batch.count} cotización(es) disponibles para comparar.`,
+        datos: { id_solicitud, total_cotizaciones: batch.count },
+    }).catch(() => {});
 
     setTimeout(() => activeBatches.delete(id_solicitud), 10000);
 };

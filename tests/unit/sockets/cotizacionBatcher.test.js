@@ -25,6 +25,12 @@ jest.unstable_mockModule('../../../sockets/services/socketEmitter.js', () => ({
     setIO: jest.fn(),
 }));
 
+// Mock pushService
+const mockEnviarPush = jest.fn().mockResolvedValue(null);
+jest.unstable_mockModule('../../../services/pushService.js', () => ({
+    enviarPushNotificacion: mockEnviarPush,
+}));
+
 // Mock events
 jest.unstable_mockModule('../../../sockets/constants/events.js', () => ({
     SERVER_EVENTS: {
@@ -169,6 +175,47 @@ describe('sockets/services/cotizacionBatcher', () => {
 
             expect(getBatchInfo(100)).toBeUndefined();
             expect(getBatchInfo(200)).toBeUndefined();
+        });
+    });
+
+    describe('push notification on closeBatch', () => {
+        it('envía push COTIZACIONES_LISTAS al cerrar por MAX', () => {
+            for (let i = 0; i < 5; i++) {
+                addCotizacion(100, 500);
+            }
+
+            expect(mockEnviarPush).toHaveBeenCalledWith(500, expect.objectContaining({
+                tipo: 'COTIZACIONES_LISTAS',
+                titulo: 'Cotizaciones disponibles',
+                datos: { id_solicitud: 100, total_cotizaciones: 5 },
+            }));
+        });
+
+        it('envía push COTIZACIONES_LISTAS al cerrar por TIMEOUT', () => {
+            addCotizacion(200, 600);
+            addCotizacion(200, 600);
+
+            jest.advanceTimersByTime(5 * 60 * 1000);
+
+            expect(mockEnviarPush).toHaveBeenCalledWith(600, expect.objectContaining({
+                tipo: 'COTIZACIONES_LISTAS',
+                datos: { id_solicitud: 200, total_cotizaciones: 2 },
+            }));
+        });
+
+        it('envía push incluso si io es null (WS no-op, push sí)', () => {
+            mockGetIO.mockReturnValue(null);
+
+            addCotizacion(300, 700);
+            jest.advanceTimersByTime(5 * 60 * 1000);
+
+            // WS no se emitió
+            expect(mockOf).not.toHaveBeenCalled();
+            // Push sí se envió
+            expect(mockEnviarPush).toHaveBeenCalledWith(700, expect.objectContaining({
+                tipo: 'COTIZACIONES_LISTAS',
+                datos: { id_solicitud: 300, total_cotizaciones: 1 },
+            }));
         });
     });
 

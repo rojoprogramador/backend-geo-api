@@ -14,6 +14,8 @@ const mockModels = {
   Cita: { create: jest.fn(), update: jest.fn() },
   Usuario: {},
   MotivoCancelacion: { findAll: jest.fn() },
+  Cotizacion: {},
+  Servicio: {},
 };
 
 const mockTransaction = {

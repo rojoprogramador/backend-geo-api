@@ -11,6 +11,8 @@ import {
     Cita,
     Usuario,
     MotivoCancelacion,
+    Cotizacion,
+    Servicio,
 } from '../models/index.js';
 import { handleError } from '../utils/errorHandler.js';
 import { ValidationError, NotFoundError, ForbiddenError } from '../utils/errors/AppError.js';
@@ -932,6 +934,40 @@ export const obtenerMisSolicitudes = async (req, res) => {
                             attributes: ['id_categoria', 'nombre'],
                         },
                     ],
+                },
+                {
+                    model: Cotizacion,
+                    as:    'cotizaciones',
+                    where: { estado: 'ACEPTADA' },
+                    required: false,
+                    attributes: ['id_cotizacion', 'valor_cotizacion', 'id_tecnico', 'estado'],
+                    include: [{
+                        model: Tecnico,
+                        as:    'tecnico',
+                        attributes: ['id_tecnico', 'url_foto', 'prom_calificacion'],
+                        include: [{
+                            model: Usuario,
+                            as:    'datos_usuario',
+                            attributes: ['nombre', 'apellido', 'telefono'],
+                        }],
+                    }],
+                },
+                {
+                    model: Servicio,
+                    as:    'servicios_generados',
+                    required: false,
+                    attributes: ['id_servicio', 'id_estado', 'valor_total'],
+                    include: [{
+                        model: EstadoSolicitud,
+                        as:    'estado',
+                        attributes: ['id_estado', 'descripcion'],
+                    }],
+                },
+                {
+                    model: Cita,
+                    as:    'citas',
+                    required: false,
+                    attributes: ['id_cita', 'fecha_cita', 'id_estado'],
                 },
             ],
             order:  [['fecha_solicitud', 'DESC']],
