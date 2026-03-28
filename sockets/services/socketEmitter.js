@@ -212,7 +212,7 @@ export const emitServicioIniciado = (params) => {
         tipo: 'SERVICIO_INICIADO',
         titulo: 'Servicio iniciado',
         mensaje: 'El técnico ha iniciado el servicio',
-        datos: { id_solicitud },
+        datos: { id_solicitud, id_servicio: servicioData.id_servicio },
     }).catch(() => {});
 };
 
@@ -241,7 +241,7 @@ export const emitServicioFinalizado = (params) => {
         tipo: 'SERVICIO_COMPLETADO',
         titulo: 'Servicio completado',
         mensaje: 'El servicio ha finalizado. Por favor califica al técnico.',
-        datos: { id_solicitud },
+        datos: { id_solicitud, id_servicio: servicioData.id_servicio },
     }).catch(() => {});
 };
 
