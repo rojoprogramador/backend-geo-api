@@ -8,6 +8,7 @@
 
 import logger from '../../utils/logger.js';
 import { SERVER_EVENTS } from '../constants/events.js';
+import { enviarPushNotificacion } from '../../services/pushService.js';
 
 /** @type {import('socket.io').Server|null} */
 let io = null;
@@ -60,6 +61,16 @@ export const emitNuevaSolicitud = (params) => {
     logger.info(
         `socketEmitter: emitNuevaSolicitud solicitud=${id_solicitud} -> ${tecnicos.length} técnicos`
     );
+
+    // ── Push notifications (best-effort, fire-and-forget) ──
+    Promise.allSettled(
+        tecnicos.map(t => enviarPushNotificacion(t.id_usuario, {
+            tipo: 'NUEVA_SOLICITUD',
+            titulo: 'Nueva solicitud cercana',
+            mensaje: `${solicitudData.subcategoria || 'Servicio'} — ${solicitudData.descripcion || ''}`.slice(0, 200),
+            datos: { id_solicitud, distancia_metros: t.distancia_metros },
+        }))
+    ).catch(() => {});
 };
 
 /**
@@ -100,6 +111,14 @@ export const emitNuevaCotizacion = (params) => {
     logger.info(
         `socketEmitter: emitNuevaCotizacion cotizacion=${cotizacionData.id_cotizacion} -> user:${id_cliente_usuario}`
     );
+
+    // ── Push notification al cliente ──
+    enviarPushNotificacion(id_cliente_usuario, {
+        tipo: 'COTIZACION_RECIBIDA',
+        titulo: 'Nueva cotización recibida',
+        mensaje: `Cotización de $${cotizacionData.valor_cotizacion || 0}`,
+        datos: { id_solicitud, id_cotizacion: cotizacionData.id_cotizacion },
+    }).catch(() => {});
 };
 
 /**
@@ -135,6 +154,14 @@ export const emitCotizacionAceptada = (params) => {
     logger.info(
         `socketEmitter: emitCotizacionAceptada solicitud=${id_solicitud} ganador=user:${id_tecnico_ganador_usuario}`
     );
+
+    // ── Push notification al técnico ganador ──
+    enviarPushNotificacion(id_tecnico_ganador_usuario, {
+        tipo: 'COTIZACION_ACEPTADA',
+        titulo: '¡Tu cotización fue aceptada!',
+        mensaje: 'El cliente aceptó tu cotización. Prepárate para el servicio.',
+        datos: { id_solicitud },
+    }).catch(() => {});
 };
 
 /**
@@ -179,6 +206,14 @@ export const emitServicioIniciado = (params) => {
     logger.info(
         `socketEmitter: emitServicioIniciado solicitud=${id_solicitud} -> user:${id_cliente_usuario}`
     );
+
+    // ── Push notification al cliente ──
+    enviarPushNotificacion(id_cliente_usuario, {
+        tipo: 'SERVICIO_INICIADO',
+        titulo: 'Servicio iniciado',
+        mensaje: 'El técnico ha iniciado el servicio',
+        datos: { id_solicitud },
+    }).catch(() => {});
 };
 
 /**
@@ -200,6 +235,14 @@ export const emitServicioFinalizado = (params) => {
     logger.info(
         `socketEmitter: emitServicioFinalizado solicitud=${id_solicitud} -> user:${id_cliente_usuario}`
     );
+
+    // ── Push notification al cliente ──
+    enviarPushNotificacion(id_cliente_usuario, {
+        tipo: 'SERVICIO_COMPLETADO',
+        titulo: 'Servicio completado',
+        mensaje: 'El servicio ha finalizado. Por favor califica al técnico.',
+        datos: { id_solicitud },
+    }).catch(() => {});
 };
 
 // ─── Calificaciones ───────────────────────────────────────
@@ -222,4 +265,12 @@ export const emitCalificacionRecibida = (params) => {
     logger.info(
         `socketEmitter: emitCalificacionRecibida -> user:${id_tecnico_usuario}`
     );
+
+    // ── Push notification al técnico ──
+    enviarPushNotificacion(id_tecnico_usuario, {
+        tipo: 'CALIFICACION_RECIBIDA',
+        titulo: 'Nueva calificación recibida',
+        mensaje: `Recibiste una calificación de ${calificacionData.puntuacion || calificacionData.calificacion || ''} estrellas`,
+        datos: calificacionData,
+    }).catch(() => {});
 };

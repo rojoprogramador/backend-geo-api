@@ -18,6 +18,7 @@ import cotizacionRoutes from './routes/cotizacionRoutes.js';
 import calificacionRoutes from './routes/calificacionRoutes.js';
 import servicioRoutes from './routes/servicioRoutes.js';
 import ciudadRoutes from './routes/ciudadRoutes.js';
+import notificacionRoutes from './routes/notificacionRoutes.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -67,6 +68,7 @@ app.use('/api/cotizaciones', cotizacionRoutes);
 app.use('/api/calificaciones', calificacionRoutes);
 app.use('/api/servicios', servicioRoutes);
 app.use('/api/ciudades', ciudadRoutes);
+app.use('/api/notificaciones', notificacionRoutes);
 
 // Health check (Docker healthcheck + monitoreo)
 app.get('/health', async (_req, res) => {

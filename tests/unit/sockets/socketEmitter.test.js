@@ -14,6 +14,11 @@ jest.unstable_mockModule('../../../utils/logger.js', () => ({
     },
 }));
 
+// Mock pushService BEFORE import
+jest.unstable_mockModule('../../../services/pushService.js', () => ({
+    enviarPushNotificacion: jest.fn().mockResolvedValue(null),
+}));
+
 // Mock events (real values)
 jest.unstable_mockModule('../../../sockets/constants/events.js', () => ({
     SERVER_EVENTS: {
@@ -115,6 +120,11 @@ describe('sockets/services/socketEmitter', () => {
     });
 
     describe('emitSolicitudCancelada', () => {
+        it('no-op cuando io es null', () => {
+            setIO(null);
+            expect(() => emitSolicitudCancelada({ id_solicitud: 1 })).not.toThrow();
+        });
+
         it('emite a room solicitud:{id}', () => {
             const { io, toFn, emitFn } = createMockIO();
             setIO(io);
@@ -131,6 +141,13 @@ describe('sockets/services/socketEmitter', () => {
     });
 
     describe('emitNuevaCotizacion', () => {
+        it('no-op cuando io es null', () => {
+            setIO(null);
+            expect(() => emitNuevaCotizacion({
+                id_solicitud: 1, id_cliente_usuario: 2, cotizacionData: {},
+            })).not.toThrow();
+        });
+
         it('emite a room user:{id_usuario_cliente}', () => {
             const { io, toFn, emitFn } = createMockIO();
             setIO(io);
@@ -152,6 +169,14 @@ describe('sockets/services/socketEmitter', () => {
     });
 
     describe('emitCotizacionAceptada', () => {
+        it('no-op cuando io es null', () => {
+            setIO(null);
+            expect(() => emitCotizacionAceptada({
+                id_solicitud: 1, id_tecnico_ganador_usuario: 2,
+                tecnicosRechazados: [], cotizacionData: {},
+            })).not.toThrow();
+        });
+
         it('emite aceptada al ganador y rechazada a los perdedores', () => {
             const { io, toFn, emitFn } = createMockIO();
             setIO(io);
@@ -174,6 +199,13 @@ describe('sockets/services/socketEmitter', () => {
     });
 
     describe('emitCotizacionRechazada', () => {
+        it('no-op cuando io es null', () => {
+            setIO(null);
+            expect(() => emitCotizacionRechazada({
+                id_solicitud: 1, id_cotizacion: 2, id_tecnico_usuario: 3,
+            })).not.toThrow();
+        });
+
         it('emite rechazo al técnico', () => {
             const { io, toFn, emitFn } = createMockIO();
             setIO(io);
@@ -219,6 +251,13 @@ describe('sockets/services/socketEmitter', () => {
     });
 
     describe('emitServicioFinalizado', () => {
+        it('no-op cuando io es null', () => {
+            setIO(null);
+            expect(() => emitServicioFinalizado({
+                id_solicitud: 1, id_cliente_usuario: 2, servicioData: {},
+            })).not.toThrow();
+        });
+
         it('emite a room user:{id_usuario_cliente}', () => {
             const { io, toFn, emitFn } = createMockIO();
             setIO(io);
@@ -237,6 +276,13 @@ describe('sockets/services/socketEmitter', () => {
     });
 
     describe('emitCalificacionRecibida', () => {
+        it('no-op cuando io es null', () => {
+            setIO(null);
+            expect(() => emitCalificacionRecibida({
+                id_tecnico_usuario: 1, calificacionData: {},
+            })).not.toThrow();
+        });
+
         it('emite a room user:{id_usuario_tecnico}', () => {
             const { io, toFn, emitFn } = createMockIO();
             setIO(io);

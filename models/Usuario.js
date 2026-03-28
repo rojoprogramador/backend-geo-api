@@ -49,6 +49,10 @@ const Usuario = sequelize.define('Usuario',{
         type: DataTypes.INTEGER,
         allowNull: true,
     },
+    expo_push_token:{
+        type: DataTypes.TEXT,
+        allowNull: true,
+    },
 },{
     tableName: 'Usuario',
 });

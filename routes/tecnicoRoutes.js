@@ -9,6 +9,7 @@ import {
     aprobarTecnico,
     rechazarTecnico,
     uploadFotoPerfil,
+    obtenerAgendaTecnico,
 } from '../controllers/tecnicoController.js';
 import {
     agregarEspecialidad,
@@ -158,6 +159,9 @@ router.get('/perfil', verifyToken, obtenerPerfilTecnico);
 
 // PUT  /api/tecnicos/perfil — Requiere autenticacion como Tecnico
 router.put('/perfil', verifyToken, actualizarPerfilTecnico);
+
+// GET  /api/tecnicos/agenda — Agenda de citas del técnico
+router.get('/agenda', verifyToken, permitirRoles('TECNICO'), obtenerAgendaTecnico);
 
 // -----------------------------------------------------------------------
 // RUTAS DE ESPECIALIDADES — Gestión de servicios del técnico
