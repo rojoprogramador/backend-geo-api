@@ -55,6 +55,7 @@ const {
   aprobarTecnico,
   rechazarTecnico,
   obtenerTodosTecnicos,
+  obtenerAgendaTecnico,
 } = await import('../../../controllers/tecnicoController.js');
 
 // -----------------------------------------------------------------------
@@ -846,6 +847,145 @@ describe('tecnicoController', () => {
 
       const err = mockHandleError.mock.calls[0][1];
       expect(err).toBeInstanceOf(ValidationError);
+    });
+  });
+
+  // ===================================================================
+  // obtenerAgendaTecnico
+  // ===================================================================
+  describe('obtenerAgendaTecnico', () => {
+    const mockTecnico = { id_tecnico: 5, id_usuario: 1 };
+
+    beforeEach(() => {
+      req.usuario = { id_usuario: 1 };
+      req.query = {};
+      // buscarPerfilTecnico calls Tecnico.findOne
+      mockModels.Tecnico.findOne.mockResolvedValue(mockTecnico);
+    });
+
+    it('debe retornar agenda paginada sin filtros → 200', async () => {
+      const citasMock = [
+        { id_cita: 1, fecha_cita: '2026-04-01T10:00:00Z', solicitud: { id_solicitud: 10 } },
+      ];
+      mockModels.Cita.findAndCountAll.mockResolvedValue({ count: 1, rows: citasMock });
+
+      await obtenerAgendaTecnico(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      const body = res.status.mock.results[0].value.json.mock.calls[0][0];
+      expect(body.data.total).toBe(1);
+      expect(body.data.citas).toEqual(citasMock);
+      expect(body.data.page).toBe(1);
+    });
+
+    it('debe aplicar filtro fecha_desde y fecha_hasta', async () => {
+      req.query = { fecha_desde: '2026-04-01', fecha_hasta: '2026-04-30' };
+      mockModels.Cita.findAndCountAll.mockResolvedValue({ count: 0, rows: [] });
+
+      await obtenerAgendaTecnico(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      const call = mockModels.Cita.findAndCountAll.mock.calls[0][0];
+      expect(call.where.fecha_cita).toBeDefined();
+    });
+
+    it('debe aplicar solo fecha_desde sin fecha_hasta', async () => {
+      req.query = { fecha_desde: '2026-04-01' };
+      mockModels.Cita.findAndCountAll.mockResolvedValue({ count: 0, rows: [] });
+
+      await obtenerAgendaTecnico(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    it('debe aplicar solo fecha_hasta sin fecha_desde', async () => {
+      req.query = { fecha_hasta: '2026-04-30' };
+      mockModels.Cita.findAndCountAll.mockResolvedValue({ count: 0, rows: [] });
+
+      await obtenerAgendaTecnico(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    it('debe filtrar por id_estado', async () => {
+      req.query = { id_estado: '4' };
+      mockModels.Cita.findAndCountAll.mockResolvedValue({ count: 0, rows: [] });
+
+      await obtenerAgendaTecnico(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      const call = mockModels.Cita.findAndCountAll.mock.calls[0][0];
+      expect(call.where.id_estado).toBe(4);
+    });
+
+    it('debe retornar 400 con fecha_desde inválida', async () => {
+      req.query = { fecha_desde: 'no-es-fecha' };
+
+      await obtenerAgendaTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+      expect(err.errors).toContain('fecha_desde debe tener formato YYYY-MM-DD');
+    });
+
+    it('debe retornar 400 con fecha_hasta inválida', async () => {
+      req.query = { fecha_hasta: '31-12-2026' };
+
+      await obtenerAgendaTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+    });
+
+    it('debe retornar 400 con id_estado inválido (texto)', async () => {
+      req.query = { id_estado: 'abc' };
+
+      await obtenerAgendaTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+      expect(err.errors).toContain('id_estado debe ser un entero positivo');
+    });
+
+    it('debe retornar 400 con id_estado negativo', async () => {
+      req.query = { id_estado: '-1' };
+
+      await obtenerAgendaTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+    });
+
+    it('debe retornar 404 si técnico no existe', async () => {
+      mockModels.Tecnico.findOne.mockResolvedValue(null);
+
+      await obtenerAgendaTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(NotFoundError);
+    });
+
+    it('debe respetar paginación custom', async () => {
+      req.query = { page: '2', limit: '5' };
+      mockModels.Cita.findAndCountAll.mockResolvedValue({ count: 8, rows: [] });
+
+      await obtenerAgendaTecnico(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      const body = res.status.mock.results[0].value.json.mock.calls[0][0];
+      expect(body.data.page).toBe(2);
+      expect(body.data.limit).toBe(5);
+      expect(body.data.total_paginas).toBe(2);
+    });
+
+    it('debe clampear limit a max 50', async () => {
+      req.query = { limit: '200' };
+      mockModels.Cita.findAndCountAll.mockResolvedValue({ count: 0, rows: [] });
+
+      await obtenerAgendaTecnico(req, res);
+
+      const call = mockModels.Cita.findAndCountAll.mock.calls[0][0];
+      expect(call.limit).toBe(50);
     });
   });
 });

@@ -81,6 +81,14 @@ describe('notificacionController', () => {
 
             expect(res.status).toHaveBeenCalledWith(400);
         });
+
+        it('debe retornar 400 si token no es string', async () => {
+            req.body = { expo_push_token: 12345 };
+
+            await registrarPushToken(req, res);
+
+            expect(res.status).toHaveBeenCalledWith(400);
+        });
     });
 
     // ===================================================================
@@ -116,6 +124,28 @@ describe('notificacionController', () => {
 
             const call = mockModels.Notificacion.findAndCountAll.mock.calls[0][0];
             expect(call.where.leida).toBe(false);
+        });
+
+        it('debe filtrar por leida=true', async () => {
+            req.query = { leida: 'true' };
+            mockModels.Notificacion.findAndCountAll.mockResolvedValue({ count: 0, rows: [] });
+            mockModels.Notificacion.count.mockResolvedValue(0);
+
+            await obtenerMisNotificaciones(req, res);
+
+            const call = mockModels.Notificacion.findAndCountAll.mock.calls[0][0];
+            expect(call.where.leida).toBe(true);
+        });
+
+        it('debe ignorar leida con valor inválido (no true/false)', async () => {
+            req.query = { leida: 'maybe' };
+            mockModels.Notificacion.findAndCountAll.mockResolvedValue({ count: 0, rows: [] });
+            mockModels.Notificacion.count.mockResolvedValue(0);
+
+            await obtenerMisNotificaciones(req, res);
+
+            const call = mockModels.Notificacion.findAndCountAll.mock.calls[0][0];
+            expect(call.where.leida).toBeUndefined();
         });
     });
 
@@ -167,6 +197,30 @@ describe('notificacionController', () => {
             await marcarComoLeida(req, res);
 
             expect(res.status).toHaveBeenCalledWith(400);
+        });
+
+        it('debe retornar 400 con id=0', async () => {
+            req.params = { id: '0' };
+
+            await marcarComoLeida(req, res);
+
+            expect(res.status).toHaveBeenCalledWith(400);
+        });
+
+        it('no debe llamar update si ya está leída', async () => {
+            req.params = { id: '5' };
+            const mockNotif = {
+                id_notificacion: 5,
+                id_usuario: 1,
+                leida: true,
+                update: jest.fn(),
+            };
+            mockModels.Notificacion.findByPk.mockResolvedValue(mockNotif);
+
+            await marcarComoLeida(req, res);
+
+            expect(mockNotif.update).not.toHaveBeenCalled();
+            expect(res.status).toHaveBeenCalledWith(200);
         });
     });
 
