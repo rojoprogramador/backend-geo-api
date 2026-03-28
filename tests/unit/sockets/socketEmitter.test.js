@@ -14,6 +14,11 @@ jest.unstable_mockModule('../../../utils/logger.js', () => ({
     },
 }));
 
+// Mock pushService BEFORE import
+jest.unstable_mockModule('../../../services/pushService.js', () => ({
+    enviarPushNotificacion: jest.fn().mockResolvedValue(null),
+}));
+
 // Mock events (real values)
 jest.unstable_mockModule('../../../sockets/constants/events.js', () => ({
     SERVER_EVENTS: {

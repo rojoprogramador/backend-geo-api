@@ -1,4 +1,5 @@
 import bcrypt from 'bcrypt';
+import { Op } from 'sequelize';
 import {
     sequelize,
     Usuario,
@@ -10,6 +11,10 @@ import {
     Categoria,
     Subcategoria,
     Especialidad,
+    Cita,
+    Solicitud,
+    EstadoSolicitud,
+    Cliente,
 } from '../models/index.js';
 import { handleError } from '../utils/errorHandler.js';
 import { ValidationError, ConflictError, NotFoundError, ForbiddenError } from '../utils/errors/AppError.js';
@@ -2193,6 +2198,200 @@ export const uploadFotoPerfil = async (req, res) => {
             data: {
                 url_foto: urlFoto
             }
+        });
+
+    } catch (error) {
+        return handleError(res, error);
+    }
+};
+
+// ---------------------------------------------------------------------------
+// AGENDA DEL TÉCNICO — HU-10 (servicio programado)
+// ---------------------------------------------------------------------------
+
+/**
+ * @swagger
+ * /tecnicos/agenda:
+ *   get:
+ *     summary: Obtener agenda de citas del técnico (HU-10)
+ *     description: |
+ *       Retorna las citas programadas del técnico autenticado.
+ *       Incluye citas de solicitudes asignadas directamente al técnico
+ *       y solicitudes donde fue notificado (TecnicoSolicitudQueue).
+ *
+ *       **Filtros opcionales:**
+ *       - `fecha_desde` / `fecha_hasta`: rango de fechas (YYYY-MM-DD)
+ *       - `id_estado`: estado de la cita (1=PENDIENTE, 4=ASIGNADA, etc.)
+ *     tags: [Tecnicos]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: fecha_desde
+ *         schema:
+ *           type: string
+ *           format: date
+ *         example: "2026-03-01"
+ *       - in: query
+ *         name: fecha_hasta
+ *         schema:
+ *           type: string
+ *           format: date
+ *         example: "2026-04-30"
+ *       - in: query
+ *         name: id_estado
+ *         schema:
+ *           type: integer
+ *         example: 1
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *         example: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 50
+ *         example: 10
+ *     responses:
+ *       200:
+ *         description: Agenda obtenida exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                     page:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     total_paginas:
+ *                       type: integer
+ *                     citas:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       403:
+ *         $ref: '#/components/responses/ForbiddenError'
+ *       404:
+ *         $ref: '#/components/responses/NotFoundError'
+ */
+export const obtenerAgendaTecnico = async (req, res) => {
+    try {
+        const page = Math.max(1, Number.parseInt(req.query.page) || 1);
+        const limit = Math.min(50, Math.max(1, Number.parseInt(req.query.limit) || 10));
+        const offset = (page - 1) * limit;
+
+        const { fecha_desde, fecha_hasta, id_estado } = req.query;
+
+        // ── Validar filtros ──
+        const errores = [];
+        if (fecha_desde && !REGEX_FECHA.test(fecha_desde))
+            errores.push('fecha_desde debe tener formato YYYY-MM-DD');
+        if (fecha_hasta && !REGEX_FECHA.test(fecha_hasta))
+            errores.push('fecha_hasta debe tener formato YYYY-MM-DD');
+        if (id_estado !== undefined) {
+            const n = Number.parseInt(id_estado);
+            if (!Number.isInteger(n) || n <= 0)
+                errores.push('id_estado debe ser un entero positivo');
+        }
+        if (errores.length > 0) throw new ValidationError('Error de validación', errores);
+
+        // ── Obtener técnico autenticado ──
+        const tecnico = await buscarPerfilTecnico(req.usuario.id_usuario);
+
+        // ── Filtro de Cita ──
+        const whereCita = {};
+        if (fecha_desde || fecha_hasta) {
+            whereCita.fecha_cita = {};
+            if (fecha_desde) whereCita.fecha_cita[Op.gte] = new Date(fecha_desde);
+            if (fecha_hasta) whereCita.fecha_cita[Op.lte] = new Date(fecha_hasta + 'T23:59:59.999Z');
+        }
+        if (id_estado) whereCita.id_estado = Number.parseInt(id_estado);
+
+        // ── Query: citas del técnico (asignado O notificado) ──
+        const { count, rows: citas } = await Cita.findAndCountAll({
+            where: whereCita,
+            include: [
+                {
+                    model: Solicitud,
+                    as: 'solicitud',
+                    required: true,
+                    attributes: ['id_solicitud', 'descripcion', 'tipo_servicio', 'direccion_servicio'],
+                    where: {
+                        [Op.or]: [
+                            { id_tecnico: tecnico.id_tecnico },
+                            {
+                                id_solicitud: {
+                                    [Op.in]: sequelize.literal(
+                                        `(SELECT "id_solicitud" FROM "TecnicoSolicitudQueue" WHERE "id_tecnico" = ${Number.parseInt(tecnico.id_tecnico)})`
+                                    ),
+                                },
+                            },
+                        ],
+                    },
+                    include: [
+                        {
+                            model: Subcategoria,
+                            as: 'subcategoria',
+                            attributes: ['id_subcategoria', 'nombre'],
+                            include: [{ model: Categoria, attributes: ['id_categoria', 'nombre'] }],
+                        },
+                        {
+                            model: Cliente,
+                            as: 'cliente',
+                            attributes: ['id_cliente'],
+                            include: [{
+                                model: Usuario,
+                                as: 'datos_usuario',
+                                attributes: ['nombre', 'apellido', 'telefono'],
+                            }],
+                        },
+                    ],
+                },
+                {
+                    model: EstadoSolicitud,
+                    as: 'estado',
+                    attributes: ['id_estado', 'descripcion'],
+                },
+            ],
+            attributes: { exclude: ['ubicacion_cita'] },
+            order: [['fecha_cita', 'ASC']],
+            limit,
+            offset,
+        });
+
+        logger.info(
+            `obtenerAgendaTecnico: Técnico ${tecnico.id_tecnico} — página ${page}, total ${count} citas`
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: 'Agenda obtenida exitosamente',
+            data: {
+                total: count,
+                page,
+                limit,
+                total_paginas: Math.ceil(count / limit),
+                citas,
+            },
         });
 
     } catch (error) {
