@@ -12,6 +12,7 @@
 import logger from '../../utils/logger.js';
 import { getIO } from './socketEmitter.js';
 import { SERVER_EVENTS } from '../constants/events.js';
+import { enviarPushNotificacion } from '../../services/pushService.js';
 
 const BATCH_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 const MAX_COTIZACIONES = 5;
@@ -80,11 +81,37 @@ const closeBatch = (id_solicitud, razon) => {
                 total_cotizaciones: batch.count,
                 mensaje: `Ya tienes ${batch.count} cotización(es) disponibles para comparar.`,
             });
+
+        logger.info(
+            `delivery canal=WS evento=${SERVER_EVENTS.COTIZACIONES_LISTAS} resultado=ENVIADO ` +
+            `id_solicitud=${id_solicitud} id_tecnico=null id_usuario=${batch.id_cliente_usuario}`
+        );
     }
 
     logger.info(
         `cotizacionBatcher: Batch cerrado solicitud=${id_solicitud} razon=${razon} total=${batch.count}`
     );
+
+    // ── Push notification al cliente (best-effort) ──
+    enviarPushNotificacion(batch.id_cliente_usuario, {
+        tipo: 'COTIZACIONES_LISTAS',
+        titulo: 'Cotizaciones disponibles',
+        mensaje: `Ya tienes ${batch.count} cotización(es) disponibles para comparar.`,
+        datos: { id_solicitud, total_cotizaciones: batch.count },
+    })
+        .then(() => {
+            logger.info(
+                `delivery canal=PUSH evento=COTIZACIONES_LISTAS resultado=ENVIADO ` +
+                `id_solicitud=${id_solicitud} id_tecnico=null id_usuario=${batch.id_cliente_usuario}`
+            );
+        })
+        .catch((error) => {
+            logger.warn(
+                `delivery canal=PUSH evento=COTIZACIONES_LISTAS resultado=ERROR ` +
+                `id_solicitud=${id_solicitud} id_tecnico=null id_usuario=${batch.id_cliente_usuario} ` +
+                `detalle=${error?.message || 'error_desconocido'}`
+            );
+        });
 
     setTimeout(() => activeBatches.delete(id_solicitud), 10000);
 };

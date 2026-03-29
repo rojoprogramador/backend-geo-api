@@ -11,12 +11,15 @@ import {
     Cita,
     Usuario,
     MotivoCancelacion,
+    Cotizacion,
+    Servicio,
 } from '../models/index.js';
 import { handleError } from '../utils/errorHandler.js';
 import { ValidationError, NotFoundError, ForbiddenError } from '../utils/errors/AppError.js';
 import logger from '../utils/logger.js';
 import { obtenerCliente, obtenerTecnico } from '../utils/profileHelpers.js';
 import { filtrarSinCooldown } from '../utils/cooldownManager.js';
+import { getInmediataCutoffDate } from '../services/immediateRequestExpiryService.js';
 
 // ---------------------------------------------------------------------------
 // Constantes de estados de solicitud (sincronizadas con seeders)
@@ -933,6 +936,40 @@ export const obtenerMisSolicitudes = async (req, res) => {
                         },
                     ],
                 },
+                {
+                    model: Cotizacion,
+                    as:    'cotizaciones',
+                    where: { estado: 'ACEPTADA' },
+                    required: false,
+                    attributes: ['id_cotizacion', 'valor_cotizacion', 'id_tecnico', 'estado'],
+                    include: [{
+                        model: Tecnico,
+                        as:    'tecnico',
+                        attributes: ['id_tecnico', 'url_foto', 'prom_calificacion'],
+                        include: [{
+                            model: Usuario,
+                            as:    'datos_usuario',
+                            attributes: ['nombre', 'apellido', 'telefono'],
+                        }],
+                    }],
+                },
+                {
+                    model: Servicio,
+                    as:    'servicios_generados',
+                    required: false,
+                    attributes: ['id_servicio', 'id_estado', 'valor_total'],
+                    include: [{
+                        model: EstadoSolicitud,
+                        as:    'estado',
+                        attributes: ['id_estado', 'descripcion'],
+                    }],
+                },
+                {
+                    model: Cita,
+                    as:    'citas',
+                    required: false,
+                    attributes: ['id_cita', 'fecha_cita', 'id_estado'],
+                },
             ],
             order:  [['fecha_solicitud', 'DESC']],
             limit,
@@ -1241,6 +1278,7 @@ export const obtenerSolicitudesTecnico = async (req, res) => {
         // 2. Obtener el id_tecnico del usuario autenticado
         // ----------------------------------------------------------------
         const tecnico = await obtenerTecnico(req.usuario.id_usuario);
+        const cutoffInmediata = getInmediataCutoffDate();
 
         // ----------------------------------------------------------------
         // 3. Buscar entradas en la cola con estado NOTIFICADO o VISTO
@@ -1255,6 +1293,15 @@ export const obtenerSolicitudesTecnico = async (req, res) => {
                 {
                     model: Solicitud,
                     as:    'solicitud',
+                    where: {
+                        [Op.or]: [
+                            { tipo_servicio: 'PROGRAMADO' },
+                            {
+                                tipo_servicio: 'INMEDIATO',
+                                fecha_solicitud: { [Op.gte]: cutoffInmediata },
+                            },
+                        ],
+                    },
                     attributes: {
                         exclude: ['ubicacion_solicitud'],
                     },

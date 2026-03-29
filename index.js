@@ -5,6 +5,7 @@ import swaggerUi from 'swagger-ui-express';
 import { sequelize } from './models/index.js';
 import { swaggerSpec } from './docs/swagger/swagger.js';
 import { initializeSocket } from './sockets/index.js';
+import { startInmediataExpirySweeper } from './services/immediateRequestExpiryService.js';
 
 // 2. IMPORTAMOS LAS RUTAS
 import usuarioRoutes from './routes/usuarioRoutes.js';
@@ -106,6 +107,7 @@ async function main() {
         //Iniciar servidor HTTP + WebSocket
         const httpServer = createServer(app);
         initializeSocket(httpServer, corsOptions);
+        startInmediataExpirySweeper();
 
         httpServer.listen(PORT, () =>{
             console.log(`🚀 Servidor corriendo en http://localhost:${PORT} 🚀`);

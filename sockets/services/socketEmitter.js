@@ -14,6 +14,55 @@ import { enviarPushNotificacion } from '../../services/pushService.js';
 let io = null;
 
 /**
+ * Trazabilidad uniforme de entregas por canal/evento.
+ * @param {Object} params
+ * @param {'WS'|'PUSH'} params.canal
+ * @param {string} params.evento
+ * @param {'ENVIADO'|'ERROR'} params.resultado
+ * @param {number|null} [params.id_solicitud]
+ * @param {number|null} [params.id_tecnico]
+ * @param {number|null} [params.id_usuario]
+ * @param {string} [params.detalle]
+ */
+const logDelivery = ({
+    canal,
+    evento,
+    resultado,
+    id_solicitud = null,
+    id_tecnico = null,
+    id_usuario = null,
+    detalle = '',
+}) => {
+    const suffix = detalle ? ` detalle=${detalle}` : '';
+    logger.info(
+        `delivery canal=${canal} evento=${evento} resultado=${resultado} ` +
+        `id_solicitud=${id_solicitud ?? 'null'} id_tecnico=${id_tecnico ?? 'null'} ` +
+        `id_usuario=${id_usuario ?? 'null'}${suffix}`
+    );
+};
+
+/**
+ * Envía push notification con trazabilidad automática (best-effort, fire-and-forget).
+ * @param {number} idUsuario
+ * @param {Object} pushPayload - { tipo, titulo, mensaje, datos }
+ * @param {Object} logCtx     - { evento, id_solicitud, id_tecnico, id_usuario }
+ */
+const pushConLog = (idUsuario, pushPayload, logCtx) => {
+    enviarPushNotificacion(idUsuario, pushPayload)
+        .then(() => {
+            logDelivery({ canal: 'PUSH', resultado: 'ENVIADO', ...logCtx });
+        })
+        .catch((error) => {
+            logDelivery({
+                canal: 'PUSH',
+                resultado: 'ERROR',
+                ...logCtx,
+                detalle: error?.message || 'error_desconocido',
+            });
+        });
+};
+
+/**
  * Establece la instancia de Socket.IO. Se llama una vez al iniciar el servidor.
  * @param {import('socket.io').Server} socketIOInstance
  */
@@ -56,6 +105,16 @@ export const emitNuevaSolicitud = (params) => {
                 priority_score: tecnico.priority_score,
             }
         );
+
+        logDelivery({
+            canal: 'WS',
+            evento: SERVER_EVENTS.NUEVA_SOLICITUD,
+            resultado: 'ENVIADO',
+            id_solicitud,
+            id_tecnico: tecnico.id_tecnico,
+            id_usuario: tecnico.id_usuario,
+            detalle: `room=tecnico:${tecnico.id_tecnico}`,
+        });
     }
 
     logger.info(
@@ -70,7 +129,41 @@ export const emitNuevaSolicitud = (params) => {
             mensaje: `${solicitudData.subcategoria || 'Servicio'} — ${solicitudData.descripcion || ''}`.slice(0, 200),
             datos: { id_solicitud, distancia_metros: t.distancia_metros },
         }))
-    ).catch(() => {});
+    )
+        .then((results) => {
+            results.forEach((result, idx) => {
+                const t = tecnicos[idx];
+                if (result.status === 'fulfilled') {
+                    logDelivery({
+                        canal: 'PUSH',
+                        evento: 'NUEVA_SOLICITUD',
+                        resultado: 'ENVIADO',
+                        id_solicitud,
+                        id_tecnico: t.id_tecnico,
+                        id_usuario: t.id_usuario,
+                    });
+                    return;
+                }
+                logDelivery({
+                    canal: 'PUSH',
+                    evento: 'NUEVA_SOLICITUD',
+                    resultado: 'ERROR',
+                    id_solicitud,
+                    id_tecnico: t.id_tecnico,
+                    id_usuario: t.id_usuario,
+                    detalle: result.reason?.message || 'error_desconocido',
+                });
+            });
+        })
+        .catch((error) => {
+            logDelivery({
+                canal: 'PUSH',
+                evento: 'NUEVA_SOLICITUD',
+                resultado: 'ERROR',
+                id_solicitud,
+                detalle: error?.message || 'error_desconocido',
+            });
+        });
 };
 
 /**
@@ -86,6 +179,14 @@ export const emitSolicitudCancelada = (params) => {
         SERVER_EVENTS.SOLICITUD_CANCELADA,
         { id_solicitud }
     );
+
+    logDelivery({
+        canal: 'WS',
+        evento: SERVER_EVENTS.SOLICITUD_CANCELADA,
+        resultado: 'ENVIADO',
+        id_solicitud,
+        detalle: `room=solicitud:${id_solicitud}`,
+    });
 
     logger.info(`socketEmitter: emitSolicitudCancelada solicitud=${id_solicitud}`);
 };
@@ -108,17 +209,32 @@ export const emitNuevaCotizacion = (params) => {
         cotizacionData
     );
 
+    logDelivery({
+        canal: 'WS',
+        evento: SERVER_EVENTS.NUEVA_COTIZACION,
+        resultado: 'ENVIADO',
+        id_solicitud,
+        id_tecnico: cotizacionData?.id_tecnico ?? null,
+        id_usuario: id_cliente_usuario,
+        detalle: `room=user:${id_cliente_usuario}`,
+    });
+
     logger.info(
         `socketEmitter: emitNuevaCotizacion cotizacion=${cotizacionData.id_cotizacion} -> user:${id_cliente_usuario}`
     );
 
     // ── Push notification al cliente ──
-    enviarPushNotificacion(id_cliente_usuario, {
+    pushConLog(id_cliente_usuario, {
         tipo: 'COTIZACION_RECIBIDA',
         titulo: 'Nueva cotización recibida',
         mensaje: `Cotización de $${cotizacionData.valor_cotizacion || 0}`,
         datos: { id_solicitud, id_cotizacion: cotizacionData.id_cotizacion },
-    }).catch(() => {});
+    }, {
+        evento: 'COTIZACION_RECIBIDA',
+        id_solicitud,
+        id_tecnico: cotizacionData?.id_tecnico ?? null,
+        id_usuario: id_cliente_usuario,
+    });
 };
 
 /**
@@ -133,10 +249,24 @@ export const emitCotizacionAceptada = (params) => {
     if (!io) return;
     const { id_solicitud, id_tecnico_ganador_usuario, tecnicosRechazados, cotizacionData } = params;
     const nspCotizaciones = io.of('/cotizaciones');
+    const payloadUnificado = cotizacionData?.datos
+        ? cotizacionData
+        : {
+            tipo: 'COTIZACION_ACEPTADA',
+            datos: {
+                id_solicitud,
+                ...cotizacionData,
+            },
+        };
 
     nspCotizaciones.to(`user:${id_tecnico_ganador_usuario}`).emit(
         SERVER_EVENTS.COTIZACION_ACEPTADA,
-        cotizacionData
+        payloadUnificado
+    );
+
+    logger.info(
+        `delivery canal=WS evento=${SERVER_EVENTS.COTIZACION_ACEPTADA} resultado=ENVIADO ` +
+        `id_solicitud=${id_solicitud} id_tecnico=${payloadUnificado?.datos?.id_tecnico ?? 'null'}`
     );
 
     for (const idUsuarioTecnico of tecnicosRechazados) {
@@ -144,6 +274,16 @@ export const emitCotizacionAceptada = (params) => {
             SERVER_EVENTS.COTIZACION_RECHAZADA,
             { id_solicitud, razon: 'OTRA_ACEPTADA' }
         );
+
+        logDelivery({
+            canal: 'WS',
+            evento: SERVER_EVENTS.COTIZACION_RECHAZADA,
+            resultado: 'ENVIADO',
+            id_solicitud,
+            id_tecnico: null,
+            id_usuario: idUsuarioTecnico,
+            detalle: `room=user:${idUsuarioTecnico}`,
+        });
     }
 
     io.of('/solicitudes').to(`solicitud:${id_solicitud}`).emit(
@@ -151,17 +291,31 @@ export const emitCotizacionAceptada = (params) => {
         { id_solicitud }
     );
 
+    logDelivery({
+        canal: 'WS',
+        evento: SERVER_EVENTS.SOLICITUD_ASIGNADA,
+        resultado: 'ENVIADO',
+        id_solicitud,
+        id_tecnico: payloadUnificado?.datos?.id_tecnico ?? null,
+        detalle: `room=solicitud:${id_solicitud}`,
+    });
+
     logger.info(
         `socketEmitter: emitCotizacionAceptada solicitud=${id_solicitud} ganador=user:${id_tecnico_ganador_usuario}`
     );
 
     // ── Push notification al técnico ganador ──
-    enviarPushNotificacion(id_tecnico_ganador_usuario, {
+    pushConLog(id_tecnico_ganador_usuario, {
         tipo: 'COTIZACION_ACEPTADA',
         titulo: '¡Tu cotización fue aceptada!',
         mensaje: 'El cliente aceptó tu cotización. Prepárate para el servicio.',
-        datos: { id_solicitud },
-    }).catch(() => {});
+        datos: payloadUnificado.datos,
+    }, {
+        evento: 'COTIZACION_ACEPTADA',
+        id_solicitud,
+        id_tecnico: payloadUnificado?.datos?.id_tecnico ?? null,
+        id_usuario: id_tecnico_ganador_usuario,
+    });
 };
 
 /**
@@ -179,6 +333,15 @@ export const emitCotizacionRechazada = (params) => {
         SERVER_EVENTS.COTIZACION_RECHAZADA,
         { id_solicitud, id_cotizacion, razon: 'RECHAZADA_POR_CLIENTE' }
     );
+
+    logDelivery({
+        canal: 'WS',
+        evento: SERVER_EVENTS.COTIZACION_RECHAZADA,
+        resultado: 'ENVIADO',
+        id_solicitud,
+        id_usuario: id_tecnico_usuario,
+        detalle: `room=user:${id_tecnico_usuario}`,
+    });
 
     logger.info(
         `socketEmitter: emitCotizacionRechazada cotizacion=${id_cotizacion} -> user:${id_tecnico_usuario}`
@@ -203,17 +366,32 @@ export const emitServicioIniciado = (params) => {
         servicioData
     );
 
+    logDelivery({
+        canal: 'WS',
+        evento: SERVER_EVENTS.SERVICIO_INICIADO,
+        resultado: 'ENVIADO',
+        id_solicitud,
+        id_tecnico: servicioData?.id_tecnico ?? null,
+        id_usuario: id_cliente_usuario,
+        detalle: `room=user:${id_cliente_usuario}`,
+    });
+
     logger.info(
         `socketEmitter: emitServicioIniciado solicitud=${id_solicitud} -> user:${id_cliente_usuario}`
     );
 
     // ── Push notification al cliente ──
-    enviarPushNotificacion(id_cliente_usuario, {
+    pushConLog(id_cliente_usuario, {
         tipo: 'SERVICIO_INICIADO',
         titulo: 'Servicio iniciado',
         mensaje: 'El técnico ha iniciado el servicio',
         datos: { id_solicitud, id_servicio: servicioData.id_servicio },
-    }).catch(() => {});
+    }, {
+        evento: 'SERVICIO_INICIADO',
+        id_solicitud,
+        id_tecnico: servicioData?.id_tecnico ?? null,
+        id_usuario: id_cliente_usuario,
+    });
 };
 
 /**
@@ -232,17 +410,32 @@ export const emitServicioFinalizado = (params) => {
         servicioData
     );
 
+    logDelivery({
+        canal: 'WS',
+        evento: SERVER_EVENTS.SERVICIO_FINALIZADO,
+        resultado: 'ENVIADO',
+        id_solicitud,
+        id_tecnico: servicioData?.id_tecnico ?? null,
+        id_usuario: id_cliente_usuario,
+        detalle: `room=user:${id_cliente_usuario}`,
+    });
+
     logger.info(
         `socketEmitter: emitServicioFinalizado solicitud=${id_solicitud} -> user:${id_cliente_usuario}`
     );
 
     // ── Push notification al cliente ──
-    enviarPushNotificacion(id_cliente_usuario, {
+    pushConLog(id_cliente_usuario, {
         tipo: 'SERVICIO_COMPLETADO',
         titulo: 'Servicio completado',
         mensaje: 'El servicio ha finalizado. Por favor califica al técnico.',
         datos: { id_solicitud, id_servicio: servicioData.id_servicio },
-    }).catch(() => {});
+    }, {
+        evento: 'SERVICIO_COMPLETADO',
+        id_solicitud,
+        id_tecnico: servicioData?.id_tecnico ?? null,
+        id_usuario: id_cliente_usuario,
+    });
 };
 
 // ─── Calificaciones ───────────────────────────────────────
@@ -262,15 +455,30 @@ export const emitCalificacionRecibida = (params) => {
         calificacionData
     );
 
+    logDelivery({
+        canal: 'WS',
+        evento: SERVER_EVENTS.CALIFICACION_RECIBIDA,
+        resultado: 'ENVIADO',
+        id_solicitud: calificacionData?.id_solicitud ?? null,
+        id_tecnico: calificacionData?.id_tecnico ?? null,
+        id_usuario: id_tecnico_usuario,
+        detalle: `room=user:${id_tecnico_usuario}`,
+    });
+
     logger.info(
         `socketEmitter: emitCalificacionRecibida -> user:${id_tecnico_usuario}`
     );
 
     // ── Push notification al técnico ──
-    enviarPushNotificacion(id_tecnico_usuario, {
+    pushConLog(id_tecnico_usuario, {
         tipo: 'CALIFICACION_RECIBIDA',
         titulo: 'Nueva calificación recibida',
         mensaje: `Recibiste una calificación de ${calificacionData.puntuacion || calificacionData.calificacion || ''} estrellas`,
         datos: calificacionData,
-    }).catch(() => {});
+    }, {
+        evento: 'CALIFICACION_RECIBIDA',
+        id_solicitud: calificacionData?.id_solicitud ?? null,
+        id_tecnico: calificacionData?.id_tecnico ?? null,
+        id_usuario: id_tecnico_usuario,
+    });
 };

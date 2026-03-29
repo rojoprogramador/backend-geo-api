@@ -8,6 +8,8 @@ const mockModels = {
   Solicitud: { findByPk: jest.fn(), update: jest.fn() },
   Cliente: { findOne: jest.fn(), findByPk: jest.fn() },
   Tecnico: { findOne: jest.fn(), findByPk: jest.fn() },
+  Cita: { findOne: jest.fn() },
+  Servicio: { findOne: jest.fn() },
   TecnicoSolicitudQueue: { findOne: jest.fn(), update: jest.fn() },
   EstadoSolicitud: {},
   Usuario: {},
@@ -39,10 +41,13 @@ const mockLogger = { info: jest.fn(), error: jest.fn(), warn: jest.fn() };
 
 const mockOp = { in: Symbol('in'), ne: Symbol('ne') };
 
+const mockGetInmediataCutoffDate = jest.fn(() => new Date());
+
 jest.unstable_mockModule('../../../models/index.js', () => mockModels);
 jest.unstable_mockModule('../../../utils/errorHandler.js', () => ({ handleError: mockHandleError }));
 jest.unstable_mockModule('../../../utils/logger.js', () => ({ default: mockLogger }));
 jest.unstable_mockModule('sequelize', () => ({ Op: mockOp }));
+jest.unstable_mockModule('../../../services/immediateRequestExpiryService.js', () => ({ getInmediataCutoffDate: mockGetInmediataCutoffDate }));
 jest.unstable_mockModule('../../../sockets/services/socketEmitter.js', () => mockSocketEmitter);
 jest.unstable_mockModule('../../../sockets/services/cotizacionBatcher.js', () => mockCotizacionBatcher);
 
@@ -202,6 +207,34 @@ describe('cotizacionController', () => {
 
       const err = mockHandleError.mock.calls[0][1];
       expect(err).toBeInstanceOf(NotFoundError);
+    });
+
+    it('debe retornar 409 si solicitud INMEDIATO está expirada (TTL)', async () => {
+      req.body = { id_solicitud: 15, valor_cotizacion: 100000 };
+      req.usuario = { id_usuario: 10 };
+
+      // Mock una solicitud INMEDIATO con fecha_solicitud hace 30 minutos (más que 20 min TTL)
+      const expiredDate = new Date(Date.now() - 30 * 60 * 1000);
+      
+      mockModels.Tecnico.findOne.mockResolvedValue({ id_tecnico: 5 });
+      mockModels.Solicitud.findByPk.mockResolvedValue({
+        id_solicitud: 15,
+        id_estado: 2,
+        tipo_servicio: 'INMEDIATO',
+        fecha_solicitud: expiredDate,
+      });
+      mockModels.TecnicoSolicitudQueue.findOne.mockResolvedValue({ id_cola: 1 });
+      // Mock cutoff hace 20 minutos
+      mockGetInmediataCutoffDate.mockReturnValue(new Date(Date.now() - 20 * 60 * 1000));
+
+      await crearCotizacion(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ConflictError);
+      expect(mockModels.TecnicoSolicitudQueue.update).toHaveBeenCalledWith(
+        expect.objectContaining({ estado_respuesta: 'IGNORADO', motivo_rechazo: 'EXPIRADA_TTL' }),
+        expect.any(Object)
+      );
     });
 
     it('debe retornar 409 si solicitud en estado inválido (ASIGNADA)', async () => {
@@ -460,31 +493,90 @@ describe('cotizacionController', () => {
       expect(err).toBeInstanceOf(ConflictError);
     });
 
-    it('debe emitir WebSocket al aceptar cotización con técnico ganador → 200', async () => {
+    it('debe emitir WebSocket al aceptar cotización PROGRAMADO con técnico ganador → 200', async () => {
       req.params = { id: '7' };
       req.usuario = { id_usuario: 10 };
 
       mockModels.Cliente.findOne.mockResolvedValue({ id_cliente: 3 });
-      mockModels.Cotizacion.findByPk
-        .mockResolvedValueOnce({
-          id_cotizacion: 7, id_solicitud: 15, id_tecnico: 5, estado: 'PENDIENTE',
-          solicitud: { id_solicitud: 15, id_cliente: 3, id_estado: 3 },
-        })
-        .mockResolvedValueOnce({
-          id_cotizacion: 7, estado: 'ACEPTADA',
-          tecnico: { id_tecnico: 5, datos_usuario: { nombre: 'Andrés', apellido: 'M.' } },
-          solicitud: { id_solicitud: 15, id_estado: 4, estado: { id_estado: 4, descripcion: 'ASIGNADA' } },
-        });
+      mockModels.Cotizacion.findByPk.mockResolvedValue({
+        id_cotizacion: 7,
+        id_solicitud: 15,
+        id_tecnico: 5,
+        estado: 'PENDIENTE',
+        solicitud: { id_solicitud: 15, id_cliente: 3, id_estado: 3, tipo_servicio: 'PROGRAMADO' },
+      });
       mockModels.Cotizacion.update.mockResolvedValue([1]);
       mockModels.Solicitud.update.mockResolvedValue([1]);
-      mockModels.Tecnico.findByPk.mockResolvedValue({ id_usuario: 30 });
+      mockModels.Tecnico.findByPk.mockResolvedValue({ id_tecnico: 5, id_usuario: 30 });
       mockModels.Cotizacion.findAll.mockResolvedValue([{ id_tecnico: 6 }]);
+
+      // Mock para las búsquedas post-commit
+      mockModels.Cita.findOne.mockResolvedValue({ id_cita: 100 });
+      mockModels.Servicio.findOne.mockResolvedValue(null);
 
       await aceptarCotizacion(req, res);
 
       expect(res.status).toHaveBeenCalledWith(200);
       expect(mockSocketEmitter.emitCotizacionAceptada).toHaveBeenCalled();
       expect(mockCotizacionBatcher.cancelBatch).toHaveBeenCalledWith(15);
+
+      const emitCall = mockSocketEmitter.emitCotizacionAceptada.mock.calls[0][0];
+      expect(emitCall.cotizacionData.datos.destino_logico).toBe('AGENDA');
+      expect(emitCall.cotizacionData.datos.id_cita).toBe(100);
+      expect(emitCall.cotizacionData.datos.id_servicio).toBeNull();
+    });
+
+    it('debe emitir contrato con destino SERVICIO_TRACKING para INMEDIATO → 200', async () => {
+      req.params = { id: '7' };
+      req.usuario = { id_usuario: 10 };
+
+      mockModels.Cliente.findOne.mockResolvedValue({ id_cliente: 3 });
+      mockModels.Cotizacion.findByPk.mockResolvedValue({
+        id_cotizacion: 7,
+        id_solicitud: 15,
+        id_tecnico: 5,
+        estado: 'PENDIENTE',
+        solicitud: { id_solicitud: 15, id_cliente: 3, id_estado: 3, tipo_servicio: 'INMEDIATO' },
+      });
+      mockModels.Cotizacion.update.mockResolvedValue([1]);
+      mockModels.Solicitud.update.mockResolvedValue([1]);
+      mockModels.Tecnico.findByPk.mockResolvedValue({ id_tecnico: 5, id_usuario: 30 });
+      mockModels.Cotizacion.findAll.mockResolvedValue([]);
+      mockModels.Cita.findOne.mockResolvedValue(null);
+      mockModels.Servicio.findOne.mockResolvedValue({ id_servicio: 55 });
+
+      await aceptarCotizacion(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      const emitCall = mockSocketEmitter.emitCotizacionAceptada.mock.calls[0][0];
+      expect(emitCall.cotizacionData.datos.destino_logico).toBe('SERVICIO_TRACKING');
+      expect(emitCall.cotizacionData.datos.id_servicio).toBe(55);
+      expect(emitCall.cotizacionData.datos.id_cita).toBeNull();
+    });
+
+    it('debe continuar sin error si WebSocket emit falla (best-effort)', async () => {
+      req.params = { id: '7' };
+      req.usuario = { id_usuario: 10 };
+
+      mockModels.Cliente.findOne.mockResolvedValue({ id_cliente: 3 });
+      mockModels.Cotizacion.findByPk.mockResolvedValue({
+        id_cotizacion: 7,
+        id_solicitud: 15,
+        id_tecnico: 5,
+        estado: 'PENDIENTE',
+        solicitud: { id_solicitud: 15, id_cliente: 3, id_estado: 3, tipo_servicio: 'PROGRAMADO' },
+      });
+      mockModels.Cotizacion.update.mockResolvedValue([1]);
+      mockModels.Solicitud.update.mockResolvedValue([1]);
+      // Tecnico.findByPk throws → triggers wsErr catch
+      mockModels.Tecnico.findByPk.mockRejectedValue(new Error('WS lookup failed'));
+
+      await aceptarCotizacion(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('WebSocket emit falló')
+      );
     });
   });
 

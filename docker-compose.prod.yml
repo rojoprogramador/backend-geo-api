@@ -16,6 +16,8 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-24h}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
+      - INMEDIATA_TTL_MIN=${INMEDIATA_TTL_MIN:-20}
+      - INMEDIATA_EXPIRY_SWEEP_SEC=${INMEDIATA_EXPIRY_SWEEP_SEC:-60}
     volumes:
       - uploads_data:/app/uploads
     depends_on:
