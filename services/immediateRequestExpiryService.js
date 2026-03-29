@@ -8,6 +8,13 @@ const ESTADO_COTIZANDO = 3;
 
 let sweepTimer = null;
 
+export const __resetInmediataExpirySweeperForTests = () => {
+    if (sweepTimer) {
+        clearInterval(sweepTimer);
+    }
+    sweepTimer = null;
+};
+
 const getTtlMinutes = () => {
     const raw = Number.parseInt(process.env.INMEDIATA_TTL_MIN || '20', 10);
     return Number.isInteger(raw) && raw > 0 ? raw : 20;

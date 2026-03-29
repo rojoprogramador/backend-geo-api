@@ -1,4 +1,4 @@
-import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+﻿import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import { createReqMock, createResMock } from '../../mocks/models.js';
 
 // --- Inline Mocks ---
@@ -14,11 +14,11 @@ const mockModels = {
   Categoria: {},
   Subcategoria: {},
   Especialidad: {},
-  Cita: { findAndCountAll: jest.fn() },
-  Solicitud: {},
-  Servicio: {},
-  TecnicoSolicitudQueue: {},
-  EstadoSolicitud: {},
+  Cita: { findAll: jest.fn(), findAndCountAll: jest.fn() },
+  Solicitud: { findOne: jest.fn() },
+  Servicio: { findOne: jest.fn() },
+  TecnicoSolicitudQueue: { findOne: jest.fn() },
+  EstadoSolicitud: { findOne: jest.fn() },
 };
 
 const mockTransaction = {
@@ -42,11 +42,14 @@ const mockLogger = { info: jest.fn(), error: jest.fn(), warn: jest.fn() };
 
 const mockGetInmediataCutoffDate = jest.fn(() => new Date());
 
+const mockBuscarPerfilTecnico = jest.fn();
+
 jest.unstable_mockModule('../../../models/index.js', () => mockModels);
 jest.unstable_mockModule('../../../utils/errorHandler.js', () => ({ handleError: mockHandleError }));
 jest.unstable_mockModule('../../../utils/logger.js', () => ({ default: mockLogger }));
 jest.unstable_mockModule('bcrypt', () => ({ default: mockBcrypt }));
 jest.unstable_mockModule('../../../services/immediateRequestExpiryService.js', () => ({ getInmediataCutoffDate: mockGetInmediataCutoffDate }));
+jest.unstable_mockModule('../../../utils/profileHelpers.js', () => ({ obtenerTecnico: mockBuscarPerfilTecnico }));
 
 const { ValidationError, NotFoundError, ForbiddenError, ConflictError } =
   await import('../../../utils/errors/AppError.js');
@@ -323,6 +326,10 @@ describe('tecnicoController', () => {
   // actualizarPerfilTecnico
   // =====================================================================
   describe('actualizarPerfilTecnico', () => {
+    beforeEach(() => {
+      mockBuscarPerfilTecnico.mockResolvedValue({ id_tecnico: 5, id_usuario: 10 });
+    });
+
     it('debe actualizar teléfono → 200', async () => {
       req.usuario = { id_usuario: 10, rol: 'TECNICO' };
       req.body = { telefono: '3001112233' };
@@ -413,9 +420,12 @@ describe('tecnicoController', () => {
     it('debe actualizar disponible_inmediato solo → 200 (toggle jornada)', async () => {
       req.usuario = { id_usuario: 10, rol: 'TECNICO' };
       req.body = { disponible_inmediato: false };
-      mockModels.Tecnico.findOne
-        .mockResolvedValueOnce({ id_tecnico: 5 })
-        .mockResolvedValueOnce({ Ciudad: { nombre_ciudad: 'Cali' }, disponible_inmediato: false });
+      mockModels.Tecnico.findOne.mockReset();
+      mockModels.Tecnico.findOne.mockResolvedValue({
+        id_tecnico: 5,
+        Ciudad: { nombre_ciudad: 'Cali' },
+        disponible_inmediato: false,
+      });
       mockModels.Usuario.findByPk.mockResolvedValue({
         id_usuario: 10, correo_electronico: 'a@b.com', telefono: '3001112233',
       });
@@ -444,14 +454,14 @@ describe('tecnicoController', () => {
     it('debe actualizar ubicacion_base con latitud/longitud → 200', async () => {
       req.usuario = { id_usuario: 10, rol: 'TECNICO' };
       req.body = { latitud: 3.4516, longitud: -76.5320 };
-      mockModels.Tecnico.findOne
-        .mockResolvedValueOnce({ id_tecnico: 5 })
-        .mockResolvedValueOnce({
-          Ciudad: { nombre_ciudad: 'Cali' },
-          disponible_inmediato: true,
-          radio_cobertura_km: 10,
-          ubicacion_base: { type: 'Point', coordinates: [-76.5320, 3.4516] },
-        });
+      mockModels.Tecnico.findOne.mockReset();
+      mockModels.Tecnico.findOne.mockResolvedValue({
+        id_tecnico: 5,
+        Ciudad: { nombre_ciudad: 'Cali' },
+        disponible_inmediato: true,
+        radio_cobertura_km: 10,
+        ubicacion_base: { type: 'Point', coordinates: [-76.5320, 3.4516] },
+      });
       mockModels.Usuario.findByPk.mockResolvedValue({
         id_usuario: 10, correo_electronico: 'a@b.com', telefono: '3001112233',
       });
@@ -865,8 +875,9 @@ describe('tecnicoController', () => {
     beforeEach(() => {
       req.usuario = { id_usuario: 1 };
       req.query = {};
-      // buscarPerfilTecnico calls Tecnico.findOne
-      mockModels.Tecnico.findOne.mockResolvedValue(mockTecnico);
+      // buscarPerfilTecnico es la función importada desde profileHelpers
+      mockBuscarPerfilTecnico.mockResolvedValue(mockTecnico);
+      mockModels.Cita.findAndCountAll.mockResolvedValue({ count: 0, rows: [] });
     });
 
     it('debe retornar agenda paginada sin filtros → 200', async () => {
@@ -963,10 +974,11 @@ describe('tecnicoController', () => {
     });
 
     it('debe retornar 404 si técnico no existe', async () => {
-      mockModels.Tecnico.findOne.mockResolvedValue(null);
+      mockBuscarPerfilTecnico.mockResolvedValue(null);
 
       await obtenerAgendaTecnico(req, res);
 
+      expect(mockHandleError).toHaveBeenCalled();
       const err = mockHandleError.mock.calls[0][1];
       expect(err).toBeInstanceOf(NotFoundError);
     });
@@ -1000,37 +1012,39 @@ describe('tecnicoController', () => {
   // =====================================================================
   describe('obtenerEstadoActualTecnico', () => {
     beforeEach(() => {
-      req.usuario = { id_usuario: 1 };
-      mockModels.Tecnico.findOne.mockResolvedValue({
+      req.usuario = { id_usuario: 1, rol: 'TECNICO' };
+      mockBuscarPerfilTecnico.mockResolvedValue({
         id_tecnico: 5,
         disponible_inmediato: true,
-        servicio_activo: null,
+        estado_validacion: 'VALIDADO',
+        radio_cobertura_km: 50,
+        tipo_cobertura: 'RADIO_FIJO',
       });
+      mockModels.Servicio.findOne.mockResolvedValue(null);
+      mockModels.TecnicoSolicitudQueue.findOne.mockResolvedValue(null);
+      mockModels.Cita.findAll.mockResolvedValue([]);
+      mockModels.Solicitud.findOne.mockResolvedValue(null);
     });
 
     it('debe retornar estado actual completo (snapshot) → 200', async () => {
       const futureDate = new Date(Date.now() + 2 * 60 * 60 * 1000);
-      mockModels.Cita.findAndCountAll.mockResolvedValue({
-        count: 2,
-        rows: [
-          {
-            id_cita: 1,
-            fecha_cita: futureDate,
-            solicitud: { id_solicitud: 10, id_cliente: 3 },
-          },
-          {
-            id_cita: 2,
-            fecha_cita: new Date(futureDate.getTime() + 2 * 60 * 60 * 1000),
-            solicitud: { id_solicitud: 11, id_cliente: 4 },
-          },
-        ],
-      });
-
-      // Mock para solicitud_inmediata_pendiente (null en este caso)
-      const Solicitud_mock = {
-        findOne: jest.fn().mockResolvedValue(null),
-      };
-      mockModels.Solicitud = Solicitud_mock;
+      const citasMock = [
+        {
+          id_cita: 1,
+          fecha_cita: futureDate,
+          id_estado: 1,
+          solicitud: { id_solicitud: 10, id_cliente: 3 },
+          estado: { id_estado: 1, descripcion: 'Programada' },
+        },
+        {
+          id_cita: 2,
+          fecha_cita: new Date(futureDate.getTime() + 2 * 60 * 60 * 1000),
+          id_estado: 1,
+          solicitud: { id_solicitud: 11, id_cliente: 4 },
+          estado: { id_estado: 1, descripcion: 'Programada' },
+        },
+      ];
+      mockModels.Cita.findAll.mockResolvedValue(citasMock);
 
       await obtenerEstadoActualTecnico(req, res);
 
@@ -1046,21 +1060,15 @@ describe('tecnicoController', () => {
       // Mock una solicitud INMEDIATO expirada (más que 20 minutos atrás)
       const expiredDate = new Date(Date.now() - 30 * 60 * 1000);
       
-      mockModels.Solicitud = {
-        findOne: jest.fn().mockResolvedValue({
-          id_solicitud: 100,
-          tipo_servicio: 'INMEDIATO',
-          fecha_solicitud: expiredDate,
-        }),
-      };
+      mockModels.TecnicoSolicitudQueue.findOne.mockResolvedValue(null);
+      mockModels.Cita.findAll.mockResolvedValue([]);
 
       // Mock cutoff
       mockGetInmediataCutoffDate.mockReturnValue(new Date(Date.now() - 20 * 60 * 1000));
 
-      mockModels.Cita.findAndCountAll.mockResolvedValue({ count: 0, rows: [] });
-
       await obtenerEstadoActualTecnico(req, res);
 
+      expect(res.status).toHaveBeenCalledWith(200);
       // La solicitud expirada NO debe ser incluida en el response
       expect(res.jsonData.data.solicitud_inmediata_pendiente).toBeNull();
     });
@@ -1069,25 +1077,27 @@ describe('tecnicoController', () => {
       // Mock una solicitud INMEDIATO reciente (< 20 minutos)
       const recentDate = new Date(Date.now() - 10 * 60 * 1000);
       
-      mockModels.Solicitud = {
-        findOne: jest.fn().mockResolvedValue({
+      mockModels.TecnicoSolicitudQueue.findOne.mockResolvedValue({
+        id_cola: 1,
+        solicitud: {
           id_solicitud: 101,
           tipo_servicio: 'INMEDIATO',
           fecha_solicitud: recentDate,
-          u_cliente: { id_usuario: 2 },
-        }),
-      };
+          usuario_cliente: { id_usuario: 2 },
+          estado: { id_estado: 1, descripcion: 'Pendiente' },
+        },
+      });
+      mockModels.Cita.findAll.mockResolvedValue([]);
 
       // Mock cutoff
       mockGetInmediataCutoffDate.mockReturnValue(new Date(Date.now() - 20 * 60 * 1000));
 
-      mockModels.Cita.findAndCountAll.mockResolvedValue({ count: 0, rows: [] });
-
       await obtenerEstadoActualTecnico(req, res);
 
+      expect(res.status).toHaveBeenCalledWith(200);
       // La solicitud reciente DEBE estar incluida
       expect(res.jsonData.data.solicitud_inmediata_pendiente).not.toBeNull();
-      expect(res.jsonData.data.solicitud_inmediata_pendiente.id_solicitud).toBe(101);
+      expect(res.jsonData.data.solicitud_inmediata_pendiente.solicitud.id_solicitud).toBe(101);
     });
 
     it('debe retornar 403 si no es TECNICO', async () => {
@@ -1099,12 +1109,12 @@ describe('tecnicoController', () => {
       expect(err).toBeInstanceOf(ForbiddenError);
     });
 
-    it('debe retornar 404 si perfil técnico no existe', async () => {
-      req.usuario = { id_usuario: 1 };
-      mockModels.Tecnico.findOne.mockResolvedValue(null);
+    it('debe retornar 404 si técnico no existe', async () => {
+      mockBuscarPerfilTecnico.mockResolvedValue(null);
 
       await obtenerEstadoActualTecnico(req, res);
 
+      expect(mockHandleError).toHaveBeenCalled();
       const err = mockHandleError.mock.calls[0][1];
       expect(err).toBeInstanceOf(NotFoundError);
     });

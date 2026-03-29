@@ -8,8 +8,8 @@ const mockModels = {
   Solicitud: { findByPk: jest.fn(), update: jest.fn() },
   Cliente: { findOne: jest.fn(), findByPk: jest.fn() },
   Tecnico: { findOne: jest.fn(), findByPk: jest.fn() },
-  Cita: {},
-  Servicio: {},
+  Cita: { findOne: jest.fn() },
+  Servicio: { findOne: jest.fn() },
   TecnicoSolicitudQueue: { findOne: jest.fn(), update: jest.fn() },
   EstadoSolicitud: {},
   Usuario: {},
@@ -498,20 +498,21 @@ describe('cotizacionController', () => {
       req.usuario = { id_usuario: 10 };
 
       mockModels.Cliente.findOne.mockResolvedValue({ id_cliente: 3 });
-      mockModels.Cotizacion.findByPk
-        .mockResolvedValueOnce({
-          id_cotizacion: 7, id_solicitud: 15, id_tecnico: 5, estado: 'PENDIENTE',
-          solicitud: { id_solicitud: 15, id_cliente: 3, id_estado: 3 },
-        })
-        .mockResolvedValueOnce({
-          id_cotizacion: 7, estado: 'ACEPTADA',
-          tecnico: { id_tecnico: 5, datos_usuario: { nombre: 'Andrés', apellido: 'M.' } },
-          solicitud: { id_solicitud: 15, id_estado: 4, estado: { id_estado: 4, descripcion: 'ASIGNADA' } },
-        });
+      mockModels.Cotizacion.findByPk.mockResolvedValue({
+        id_cotizacion: 7,
+        id_solicitud: 15,
+        id_tecnico: 5,
+        estado: 'PENDIENTE',
+        solicitud: { id_solicitud: 15, id_cliente: 3, id_estado: 3, tipo_servicio: 'PROGRAMADO' },
+      });
       mockModels.Cotizacion.update.mockResolvedValue([1]);
       mockModels.Solicitud.update.mockResolvedValue([1]);
-      mockModels.Tecnico.findByPk.mockResolvedValue({ id_usuario: 30 });
+      mockModels.Tecnico.findByPk.mockResolvedValue({ id_tecnico: 5, id_usuario: 30 });
       mockModels.Cotizacion.findAll.mockResolvedValue([{ id_tecnico: 6 }]);
+      
+      // Mock para las búsquedas post-commit
+      mockModels.Cita.findOne.mockResolvedValue({ id_cita: 100 });
+      mockModels.Servicio.findOne.mockResolvedValue(null);
 
       await aceptarCotizacion(req, res);
 

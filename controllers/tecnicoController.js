@@ -2319,6 +2319,7 @@ export const obtenerAgendaTecnico = async (req, res) => {
 
         // ── Obtener técnico autenticado ──
         const tecnico = await buscarPerfilTecnico(req.usuario.id_usuario);
+        if (!tecnico) throw new NotFoundError('Perfil de técnico no encontrado');
 
         // ── Filtro de Cita ──
         const whereCita = {};
@@ -2433,6 +2434,7 @@ export const obtenerEstadoActualTecnico = async (req, res) => {
         }
 
         const tecnico = await buscarPerfilTecnico(req.usuario.id_usuario);
+        if (!tecnico) throw new NotFoundError('Perfil de técnico no encontrado');
         const cutoffInmediata = getInmediataCutoffDate();
 
         const servicioActivo = await Servicio.findOne({

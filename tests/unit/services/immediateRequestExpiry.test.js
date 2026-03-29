@@ -32,17 +32,20 @@ jest.unstable_mockModule('sequelize', () => ({ Op: mockOp }));
 const {
   getInmediataCutoffDate,
   startInmediataExpirySweeper,
+  __resetInmediataExpirySweeperForTests,
 } = await import('../../../services/immediateRequestExpiryService.js');
 
 describe('immediateRequestExpiryService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
+    __resetInmediataExpirySweeperForTests();
     process.env.INMEDIATA_TTL_MIN = '20';
     process.env.INMEDIATA_EXPIRY_SWEEP_SEC = '60';
   });
 
   afterEach(() => {
+    __resetInmediataExpirySweeperForTests();
     jest.useRealTimers();
     jest.clearAllTimers();
     delete process.env.INMEDIATA_TTL_MIN;
@@ -122,7 +125,7 @@ describe('immediateRequestExpiryService', () => {
       expect(mockModels.Solicitud.findAll).toHaveBeenCalledTimes(1);
     });
 
-    it('should execute sweep after interval time', (done) => {
+    it('should execute sweep after interval time', async () => {
       const mockTransaction = {
         commit: jest.fn(),
         rollback: jest.fn(),
@@ -132,15 +135,12 @@ describe('immediateRequestExpiryService', () => {
 
       startInmediataExpirySweeper();
 
-      jest.advanceTimersByTime(60000);
+      await jest.advanceTimersByTimeAsync(60000);
 
-      setTimeout(() => {
-        expect(mockModels.Solicitud.findAll).toHaveBeenCalled();
-        done();
-      }, 100);
+      expect(mockModels.Solicitud.findAll).toHaveBeenCalled();
     });
 
-    it('should use INMEDIATA_EXPIRY_SWEEP_SEC env var for interval', (done) => {
+    it('should use INMEDIATA_EXPIRY_SWEEP_SEC env var for interval', async () => {
       process.env.INMEDIATA_EXPIRY_SWEEP_SEC = '30';
 
       const mockTransaction = {
@@ -152,17 +152,14 @@ describe('immediateRequestExpiryService', () => {
 
       startInmediataExpirySweeper();
 
-      jest.advanceTimersByTime(30000);
+      await jest.advanceTimersByTimeAsync(30000);
 
-      setTimeout(() => {
-        expect(mockModels.Solicitud.findAll).toHaveBeenCalled();
-        done();
-      }, 100);
+      expect(mockModels.Solicitud.findAll).toHaveBeenCalled();
     });
   });
 
   describe('sweep expired requests (integration)', () => {
-    it('should handle successful sweep with expired solicitudes', (done) => {
+    it('should handle successful sweep with expired solicitudes', async () => {
       const expiredSolicitud = {
         id_solicitud: 1,
       };
@@ -178,19 +175,16 @@ describe('immediateRequestExpiryService', () => {
       mockModels.Solicitud.update.mockResolvedValue([1]);
 
       startInmediataExpirySweeper();
-      jest.advanceTimersByTime(60000);
+      await jest.advanceTimersByTimeAsync(60000);
 
-      setTimeout(() => {
-        expect(mockModels.Solicitud.findAll).toHaveBeenCalled();
-        expect(mockModels.TecnicoSolicitudQueue.update).toHaveBeenCalled();
-        expect(mockModels.Solicitud.update).toHaveBeenCalled();
-        expect(mockModels.sequelize.transaction().commit).toHaveBeenCalled();
-        expect(mockLogger.info).toHaveBeenCalled();
-        done();
-      }, 100);
+      expect(mockModels.Solicitud.findAll).toHaveBeenCalled();
+      expect(mockModels.TecnicoSolicitudQueue.update).toHaveBeenCalled();
+      expect(mockModels.Solicitud.update).toHaveBeenCalled();
+      expect(mockTransaction.commit).toHaveBeenCalled();
+      expect(mockLogger.info).toHaveBeenCalled();
     });
 
-    it('should handle transaction rollback on error', (done) => {
+    it('should handle transaction rollback on error', async () => {
       const mockTransaction = {
         commit: jest.fn(),
         rollback: jest.fn(),
@@ -201,16 +195,13 @@ describe('immediateRequestExpiryService', () => {
       mockModels.TecnicoSolicitudQueue.update.mockRejectedValue(new Error('DB Error'));
 
       startInmediataExpirySweeper();
-      jest.advanceTimersByTime(60000);
+      await jest.advanceTimersByTimeAsync(60000);
 
-      setTimeout(() => {
-        expect(mockModels.sequelize.transaction().rollback).toHaveBeenCalled();
-        expect(mockLogger.error).toHaveBeenCalled();
-        done();
-      }, 100);
+      expect(mockTransaction.rollback).toHaveBeenCalled();
+      expect(mockLogger.error).toHaveBeenCalled();
     });
 
-    it('should skip sweep if no expired solicitudes found', (done) => {
+    it('should skip sweep if no expired solicitudes found', async () => {
       const mockTransaction = {
         commit: jest.fn(),
         rollback: jest.fn(),
@@ -220,14 +211,11 @@ describe('immediateRequestExpiryService', () => {
       mockModels.Solicitud.findAll.mockResolvedValue([]);
 
       startInmediataExpirySweeper();
-      jest.advanceTimersByTime(60000);
+      await jest.advanceTimersByTimeAsync(60000);
 
-      setTimeout(() => {
-        expect(mockModels.Solicitud.findAll).toHaveBeenCalled();
-        expect(mockModels.TecnicoSolicitudQueue.update).not.toHaveBeenCalled();
-        expect(mockModels.sequelize.transaction().commit).not.toHaveBeenCalled();
-        done();
-      }, 100);
+      expect(mockModels.Solicitud.findAll).toHaveBeenCalled();
+      expect(mockModels.TecnicoSolicitudQueue.update).not.toHaveBeenCalled();
+      expect(mockTransaction.commit).not.toHaveBeenCalled();
     });
   });
 });
