@@ -158,9 +158,18 @@ export const createUsuario = async ( req, res ) => {
     try {
         // Extraer datos del cuerpo de la solicitud (body) de la petición
         const {
-            nombre, apellido, fecha_nacimiento, correo_electronico, 
+            nombre, apellido, fecha_nacimiento, correo_electronico,
             telefono, contraseña, id_rol, id_tipoDoc, num_identificacion
         } = req.body;
+
+        // Bloquear creación de usuarios ADMIN desde endpoint público
+        if (Number.parseInt(id_rol, 10) === 1) {
+            return res.status(403).json({
+                success: false,
+                message: 'No es posible crear usuarios administradores desde este endpoint',
+            });
+        }
+
         // Encriptar la contraseña antes de guardarla
         const passwordHash = await bcrypt.hash(contraseña, 10); // 10 es el costo de procesamiento
 

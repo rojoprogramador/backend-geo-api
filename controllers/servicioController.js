@@ -733,6 +733,229 @@ export const finalizarServicio = async (req, res) => {
 
 /**
  * @swagger
+ * /servicios/{id}/confirmar-pago:
+ *   put:
+ *     summary: Cliente confirma el pago del servicio finalizado
+ *     description: |
+ *       Permite al cliente confirmar que realizó el pago al técnico después
+ *       de que éste finalizó el servicio. Esto:
+ *       - Marca la transacción como COMPLETADO
+ *       - Transfiere el saldo_pendiente a saldo_disponible del técnico
+ *       - Notifica al técnico por WebSocket y push
+ *
+ *       **Requiere**: Token JWT de un usuario con rol CLIENTE.
+ *     tags: [Servicios]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *         description: ID del servicio
+ *     responses:
+ *       200:
+ *         description: Pago confirmado exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Pago confirmado exitosamente"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id_transaccion:
+ *                       type: integer
+ *                       example: 5
+ *                     estado_pago:
+ *                       type: string
+ *                       example: "COMPLETADO"
+ *                     monto_total:
+ *                       type: number
+ *                       example: 180000
+ *                     fecha_pago:
+ *                       type: string
+ *                       format: date-time
+ *       403:
+ *         $ref: '#/components/responses/ForbiddenError'
+ *       404:
+ *         $ref: '#/components/responses/NotFoundError'
+ *       409:
+ *         description: Servicio no está en estado válido o pago ya confirmado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "El pago de este servicio ya fue confirmado"
+ */
+export const confirmarPagoServicio = async (req, res) => {
+    const t = await sequelize.transaction();
+
+    try {
+        // ----------------------------------------------------------------
+        // 1. Validar parámetro de ruta
+        // ----------------------------------------------------------------
+        const idServicio = parseInt(req.params.id, 10);
+        if (!Number.isInteger(idServicio) || idServicio <= 0) {
+            await t.rollback();
+            throw new ValidationError('Parámetro inválido', [
+                'El parámetro id debe ser un número entero positivo',
+            ]);
+        }
+
+        // ----------------------------------------------------------------
+        // 2. Obtener el perfil Cliente del usuario autenticado
+        // ----------------------------------------------------------------
+        const cliente = await obtenerCliente(req.usuario.id_usuario, t);
+
+        // ----------------------------------------------------------------
+        // 3. Buscar el Servicio con Transaccion
+        // ----------------------------------------------------------------
+        const servicio = await Servicio.findByPk(idServicio, {
+            include: [
+                {
+                    model: Transaccion,
+                    as: 'transaccion',
+                    attributes: ['id_transaccion', 'monto_total', 'monto_tecnico', 'estado_pago'],
+                },
+            ],
+            transaction: t,
+        });
+
+        if (!servicio) {
+            await t.rollback();
+            throw new NotFoundError(`No se encontró el servicio con ID ${idServicio}`);
+        }
+
+        // ----------------------------------------------------------------
+        // 4. Verificar que el cliente autenticado es dueño del servicio
+        // ----------------------------------------------------------------
+        if (servicio.id_cliente !== cliente.id_cliente) {
+            await t.rollback();
+            throw new ForbiddenError('No tienes permiso para confirmar el pago de este servicio');
+        }
+
+        // ----------------------------------------------------------------
+        // 5. Verificar estado: el servicio debe estar COMPLETADA (6)
+        // ----------------------------------------------------------------
+        if (servicio.id_estado !== ESTADO_COMPLETADA) {
+            await t.rollback();
+            throw new ConflictError(
+                'El servicio no está en estado COMPLETADA. El técnico debe finalizar el servicio primero.'
+            );
+        }
+
+        // ----------------------------------------------------------------
+        // 6. Verificar que la transacción existe y está PENDIENTE
+        // ----------------------------------------------------------------
+        const transaccion = servicio.transaccion;
+        if (!transaccion) {
+            await t.rollback();
+            throw new NotFoundError('No se encontró la transacción asociada a este servicio');
+        }
+
+        if (transaccion.estado_pago !== 'PENDIENTE') {
+            await t.rollback();
+            throw new ConflictError('El pago de este servicio ya fue confirmado');
+        }
+
+        // ----------------------------------------------------------------
+        // 7. Actualizar Transaccion → COMPLETADO
+        // ----------------------------------------------------------------
+        await Transaccion.update(
+            {
+                estado_pago: 'COMPLETADO',
+                fecha_pago: new Date(),
+            },
+            {
+                where: { id_transaccion: transaccion.id_transaccion },
+                transaction: t,
+            }
+        );
+
+        // ----------------------------------------------------------------
+        // 8. Transferir saldo: pendiente → disponible (incrementos atómicos)
+        // ----------------------------------------------------------------
+        const cuenta = await CuentaTecnico.findOne({
+            where: { id_tecnico: servicio.id_tecnico },
+            transaction: t,
+        });
+
+        if (cuenta) {
+            await cuenta.increment(
+                { saldo_disponible: parseFloat(transaccion.monto_tecnico) },
+                { transaction: t }
+            );
+            await cuenta.decrement(
+                { saldo_pendiente: parseFloat(transaccion.monto_tecnico) },
+                { transaction: t }
+            );
+        }
+
+        await t.commit();
+
+        // ── WebSocket: notificar al técnico que el pago fue confirmado ──
+        try {
+            const { emitPagoConfirmado } = await import('../sockets/services/socketEmitter.js');
+            const tecnico = await Tecnico.findByPk(servicio.id_tecnico, { attributes: ['id_usuario'] });
+            if (tecnico?.id_usuario) {
+                emitPagoConfirmado({
+                    id_solicitud: servicio.id_solicitud,
+                    id_tecnico_usuario: tecnico.id_usuario,
+                    pagoData: {
+                        id_servicio: idServicio,
+                        id_transaccion: transaccion.id_transaccion,
+                        id_tecnico: servicio.id_tecnico,
+                        monto_tecnico: parseFloat(transaccion.monto_tecnico),
+                        estado_pago: 'COMPLETADO',
+                    },
+                });
+            }
+        } catch (wsErr) {
+            logger.warn(`confirmarPagoServicio: WebSocket emit falló (no-crítico): ${wsErr.message}`);
+        }
+
+        logger.info(
+            `confirmarPagoServicio: Pago confirmado servicio id=${idServicio} — transaccion id=${transaccion.id_transaccion} — monto_tecnico=${transaccion.monto_tecnico} COP`
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: 'Pago confirmado exitosamente',
+            data: {
+                id_transaccion: transaccion.id_transaccion,
+                estado_pago: 'COMPLETADO',
+                monto_total: parseFloat(transaccion.monto_total),
+                fecha_pago: new Date(),
+            },
+        });
+
+    } catch (error) {
+        if (!t.finished) {
+            await t.rollback();
+        }
+        return handleError(res, error);
+    }
+};
+
+// ---------------------------------------------------------------------------
+
+/**
+ * @swagger
  * /servicios/tecnico/mis-servicios:
  *   get:
  *     summary: Listar servicios del técnico autenticado (HU-16)

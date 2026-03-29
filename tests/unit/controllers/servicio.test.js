@@ -8,11 +8,11 @@ const mockModels = {
   Solicitud: { findByPk: jest.fn(), update: jest.fn() },
   Cotizacion: {},
   Cliente: { findOne: jest.fn(), findByPk: jest.fn() },
-  Tecnico: { findOne: jest.fn() },
+  Tecnico: { findOne: jest.fn(), findByPk: jest.fn() },
   Subcategoria: {},
   EstadoSolicitud: {},
   MedioPago: { findByPk: jest.fn() },
-  Transaccion: { create: jest.fn() },
+  Transaccion: { create: jest.fn(), update: jest.fn() },
   CuentaTecnico: { findOrCreate: jest.fn(), findOne: jest.fn() },
   Usuario: {},
 };
@@ -20,6 +20,7 @@ const mockModels = {
 const mockSocketEmitter = {
   emitServicioIniciado:   jest.fn(),
   emitServicioFinalizado: jest.fn(),
+  emitPagoConfirmado:     jest.fn(),
 };
 
 const mockTransaction = { commit: jest.fn(), rollback: jest.fn(), finished: undefined };
@@ -49,6 +50,7 @@ const { ValidationError, NotFoundError, ForbiddenError, ConflictError } =
 const {
   iniciarServicio,
   finalizarServicio,
+  confirmarPagoServicio,
   obtenerServiciosPorTecnico,
   obtenerServiciosPorCliente,
   obtenerServicioPorId,
@@ -707,6 +709,157 @@ describe('servicioController', () => {
 
       const err = mockHandleError.mock.calls[0][1];
       expect(err).toBeInstanceOf(ForbiddenError);
+    });
+  });
+
+  // =====================================================================
+  // confirmarPagoServicio
+  // =====================================================================
+  describe('confirmarPagoServicio', () => {
+    const mockCuenta = {
+      increment: jest.fn(),
+      decrement: jest.fn(),
+    };
+
+    it('debe confirmar pago exitosamente → 200', async () => {
+      req.params = { id: '8' };
+      req.usuario = { id_usuario: 1 };
+
+      mockModels.Cliente.findOne.mockResolvedValue({ id_cliente: 3 });
+      mockModels.Servicio.findByPk.mockResolvedValue({
+        id_servicio: 8, id_solicitud: 15, id_cliente: 3, id_tecnico: 5, id_estado: 6,
+        transaccion: { id_transaccion: 5, monto_total: 180000, monto_tecnico: 153000, estado_pago: 'PENDIENTE' },
+      });
+      mockModels.Transaccion.update.mockResolvedValue([1]);
+      mockModels.CuentaTecnico.findOne.mockResolvedValue(mockCuenta);
+      mockModels.Tecnico.findByPk.mockResolvedValue({ id_usuario: 10 });
+
+      await confirmarPagoServicio(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(mockTransaction.commit).toHaveBeenCalled();
+      expect(mockModels.Transaccion.update).toHaveBeenCalledWith(
+        expect.objectContaining({ estado_pago: 'COMPLETADO' }),
+        expect.any(Object)
+      );
+      expect(mockCuenta.increment).toHaveBeenCalledWith(
+        { saldo_disponible: 153000 },
+        expect.any(Object)
+      );
+      expect(mockCuenta.decrement).toHaveBeenCalledWith(
+        { saldo_pendiente: 153000 },
+        expect.any(Object)
+      );
+      expect(res.jsonData.data.estado_pago).toBe('COMPLETADO');
+    });
+
+    it('debe retornar 400 con id inválido', async () => {
+      req.params = { id: 'abc' };
+
+      await confirmarPagoServicio(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ValidationError);
+    });
+
+    it('debe retornar 404 si servicio no encontrado', async () => {
+      req.params = { id: '999' };
+      req.usuario = { id_usuario: 1 };
+      mockModels.Cliente.findOne.mockResolvedValue({ id_cliente: 3 });
+      mockModels.Servicio.findByPk.mockResolvedValue(null);
+
+      await confirmarPagoServicio(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(NotFoundError);
+    });
+
+    it('debe retornar 403 si cliente no es dueño del servicio', async () => {
+      req.params = { id: '8' };
+      req.usuario = { id_usuario: 1 };
+      mockModels.Cliente.findOne.mockResolvedValue({ id_cliente: 99 });
+      mockModels.Servicio.findByPk.mockResolvedValue({
+        id_servicio: 8, id_cliente: 3, id_tecnico: 5, id_estado: 6,
+        transaccion: { id_transaccion: 5, estado_pago: 'PENDIENTE' },
+      });
+
+      await confirmarPagoServicio(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ForbiddenError);
+    });
+
+    it('debe retornar 409 si servicio no está COMPLETADA', async () => {
+      req.params = { id: '8' };
+      req.usuario = { id_usuario: 1 };
+      mockModels.Cliente.findOne.mockResolvedValue({ id_cliente: 3 });
+      mockModels.Servicio.findByPk.mockResolvedValue({
+        id_servicio: 8, id_cliente: 3, id_tecnico: 5, id_estado: 5,
+        transaccion: { id_transaccion: 5, estado_pago: 'PENDIENTE' },
+      });
+
+      await confirmarPagoServicio(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ConflictError);
+    });
+
+    it('debe retornar 409 si pago ya fue confirmado', async () => {
+      req.params = { id: '8' };
+      req.usuario = { id_usuario: 1 };
+      mockModels.Cliente.findOne.mockResolvedValue({ id_cliente: 3 });
+      mockModels.Servicio.findByPk.mockResolvedValue({
+        id_servicio: 8, id_cliente: 3, id_tecnico: 5, id_estado: 6,
+        transaccion: { id_transaccion: 5, estado_pago: 'COMPLETADO' },
+      });
+
+      await confirmarPagoServicio(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ConflictError);
+    });
+
+    it('debe retornar 404 si transacción no existe', async () => {
+      req.params = { id: '8' };
+      req.usuario = { id_usuario: 1 };
+      mockModels.Cliente.findOne.mockResolvedValue({ id_cliente: 3 });
+      mockModels.Servicio.findByPk.mockResolvedValue({
+        id_servicio: 8, id_cliente: 3, id_tecnico: 5, id_estado: 6,
+        transaccion: null,
+      });
+
+      await confirmarPagoServicio(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(NotFoundError);
+    });
+
+    it('debe emitir WS al técnico cuando pago confirmado', async () => {
+      req.params = { id: '8' };
+      req.usuario = { id_usuario: 1 };
+
+      mockModels.Cliente.findOne.mockResolvedValue({ id_cliente: 3 });
+      mockModels.Servicio.findByPk.mockResolvedValue({
+        id_servicio: 8, id_solicitud: 15, id_cliente: 3, id_tecnico: 5, id_estado: 6,
+        transaccion: { id_transaccion: 5, monto_total: 100000, monto_tecnico: 85000, estado_pago: 'PENDIENTE' },
+      });
+      mockModels.Transaccion.update.mockResolvedValue([1]);
+      mockModels.CuentaTecnico.findOne.mockResolvedValue(mockCuenta);
+      mockModels.Tecnico.findByPk.mockResolvedValue({ id_usuario: 10 });
+
+      await confirmarPagoServicio(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(mockSocketEmitter.emitPagoConfirmado).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id_solicitud: 15,
+          id_tecnico_usuario: 10,
+          pagoData: expect.objectContaining({
+            id_servicio: 8,
+            estado_pago: 'COMPLETADO',
+          }),
+        })
+      );
     });
   });
 });
