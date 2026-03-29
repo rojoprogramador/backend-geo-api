@@ -16,6 +16,8 @@ const mockModels = {
   Especialidad: {},
   Cita: { findAndCountAll: jest.fn() },
   Solicitud: {},
+  Servicio: {},
+  TecnicoSolicitudQueue: {},
   EstadoSolicitud: {},
 };
 
@@ -38,10 +40,13 @@ const mockBcrypt = { hash: jest.fn() };
 
 const mockLogger = { info: jest.fn(), error: jest.fn(), warn: jest.fn() };
 
+const mockGetInmediataCutoffDate = jest.fn(() => new Date());
+
 jest.unstable_mockModule('../../../models/index.js', () => mockModels);
 jest.unstable_mockModule('../../../utils/errorHandler.js', () => ({ handleError: mockHandleError }));
 jest.unstable_mockModule('../../../utils/logger.js', () => ({ default: mockLogger }));
 jest.unstable_mockModule('bcrypt', () => ({ default: mockBcrypt }));
+jest.unstable_mockModule('../../../services/immediateRequestExpiryService.js', () => ({ getInmediataCutoffDate: mockGetInmediataCutoffDate }));
 
 const { ValidationError, NotFoundError, ForbiddenError, ConflictError } =
   await import('../../../utils/errors/AppError.js');
@@ -56,6 +61,7 @@ const {
   rechazarTecnico,
   obtenerTodosTecnicos,
   obtenerAgendaTecnico,
+  obtenerEstadoActualTecnico,
 } = await import('../../../controllers/tecnicoController.js');
 
 // -----------------------------------------------------------------------
@@ -986,6 +992,121 @@ describe('tecnicoController', () => {
 
       const call = mockModels.Cita.findAndCountAll.mock.calls[0][0];
       expect(call.limit).toBe(50);
+    });
+  });
+
+  // =====================================================================
+  // obtenerEstadoActualTecnico (Fase 2: App Rehydration)
+  // =====================================================================
+  describe('obtenerEstadoActualTecnico', () => {
+    beforeEach(() => {
+      req.usuario = { id_usuario: 1 };
+      mockModels.Tecnico.findOne.mockResolvedValue({
+        id_tecnico: 5,
+        disponible_inmediato: true,
+        servicio_activo: null,
+      });
+    });
+
+    it('debe retornar estado actual completo (snapshot) → 200', async () => {
+      const futureDate = new Date(Date.now() + 2 * 60 * 60 * 1000);
+      mockModels.Cita.findAndCountAll.mockResolvedValue({
+        count: 2,
+        rows: [
+          {
+            id_cita: 1,
+            fecha_cita: futureDate,
+            solicitud: { id_solicitud: 10, id_cliente: 3 },
+          },
+          {
+            id_cita: 2,
+            fecha_cita: new Date(futureDate.getTime() + 2 * 60 * 60 * 1000),
+            solicitud: { id_solicitud: 11, id_cliente: 4 },
+          },
+        ],
+      });
+
+      // Mock para solicitud_inmediata_pendiente (null en este caso)
+      const Solicitud_mock = {
+        findOne: jest.fn().mockResolvedValue(null),
+      };
+      mockModels.Solicitud = Solicitud_mock;
+
+      await obtenerEstadoActualTecnico(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.jsonData.data).toHaveProperty('disponibilidad');
+      expect(res.jsonData.data).toHaveProperty('servicio_activo');
+      expect(res.jsonData.data).toHaveProperty('citas_proximas_asignadas');
+      expect(res.jsonData.data).toHaveProperty('solicitud_inmediata_pendiente');
+      expect(res.jsonData.data.citas_proximas_asignadas).toHaveLength(2);
+    });
+
+    it('debe excluir solicitudes inmediatas expiradas (TTL filtering) → 200', async () => {
+      // Mock una solicitud INMEDIATO expirada (más que 20 minutos atrás)
+      const expiredDate = new Date(Date.now() - 30 * 60 * 1000);
+      
+      mockModels.Solicitud = {
+        findOne: jest.fn().mockResolvedValue({
+          id_solicitud: 100,
+          tipo_servicio: 'INMEDIATO',
+          fecha_solicitud: expiredDate,
+        }),
+      };
+
+      // Mock cutoff
+      mockGetInmediataCutoffDate.mockReturnValue(new Date(Date.now() - 20 * 60 * 1000));
+
+      mockModels.Cita.findAndCountAll.mockResolvedValue({ count: 0, rows: [] });
+
+      await obtenerEstadoActualTecnico(req, res);
+
+      // La solicitud expirada NO debe ser incluida en el response
+      expect(res.jsonData.data.solicitud_inmediata_pendiente).toBeNull();
+    });
+
+    it('debe incluir solicitud inmediata NO expirada (TTL valid) → 200', async () => {
+      // Mock una solicitud INMEDIATO reciente (< 20 minutos)
+      const recentDate = new Date(Date.now() - 10 * 60 * 1000);
+      
+      mockModels.Solicitud = {
+        findOne: jest.fn().mockResolvedValue({
+          id_solicitud: 101,
+          tipo_servicio: 'INMEDIATO',
+          fecha_solicitud: recentDate,
+          u_cliente: { id_usuario: 2 },
+        }),
+      };
+
+      // Mock cutoff
+      mockGetInmediataCutoffDate.mockReturnValue(new Date(Date.now() - 20 * 60 * 1000));
+
+      mockModels.Cita.findAndCountAll.mockResolvedValue({ count: 0, rows: [] });
+
+      await obtenerEstadoActualTecnico(req, res);
+
+      // La solicitud reciente DEBE estar incluida
+      expect(res.jsonData.data.solicitud_inmediata_pendiente).not.toBeNull();
+      expect(res.jsonData.data.solicitud_inmediata_pendiente.id_solicitud).toBe(101);
+    });
+
+    it('debe retornar 403 si no es TECNICO', async () => {
+      req.usuario = { id_usuario: 1, rol: 'CLIENTE' };
+
+      await obtenerEstadoActualTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ForbiddenError);
+    });
+
+    it('debe retornar 404 si perfil técnico no existe', async () => {
+      req.usuario = { id_usuario: 1 };
+      mockModels.Tecnico.findOne.mockResolvedValue(null);
+
+      await obtenerEstadoActualTecnico(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(NotFoundError);
     });
   });
 });

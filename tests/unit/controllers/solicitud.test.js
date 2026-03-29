@@ -45,6 +45,9 @@ jest.unstable_mockModule('../../../sockets/services/socketEmitter.js', () => moc
 const mockCooldownManager = { filtrarSinCooldown: jest.fn((ids) => ids) };
 jest.unstable_mockModule('../../../utils/cooldownManager.js', () => mockCooldownManager);
 
+const mockGetInmediataCutoffDate = jest.fn(() => new Date());
+jest.unstable_mockModule('../../../services/immediateRequestExpiryService.js', () => ({ getInmediataCutoffDate: mockGetInmediataCutoffDate }));
+
 const { ValidationError, NotFoundError, ForbiddenError } =
   await import('../../../utils/errors/AppError.js');
 
@@ -484,6 +487,70 @@ describe('solicitudController', () => {
       await obtenerSolicitudesTecnico(req, res);
 
       expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.jsonData.data.total).toBe(1);
+    });
+
+    it('debe excluir solicitudes INMEDIATO expiradas (TTL filtering) → 200', async () => {
+      req.usuario = { id_usuario: 10 };
+      req.query = {};
+      mockModels.Tecnico.findOne.mockResolvedValue({ id_tecnico: 5 });
+
+      // Mock cutoff (20 minutos atrás)
+      const cutoff = new Date(Date.now() - 20 * 60 * 1000);
+      const mockGetInmediataCutoffDate = jest.fn(() => cutoff);
+
+      // Mock solicitudes: una PROGRAMADA (siempre incluida) y una INMEDIATO expirada
+      mockModels.TecnicoSolicitudQueue.findAndCountAll.mockResolvedValue({
+        count: 1,
+        rows: [
+          {
+            id_cola: 1,
+            priority_score: 80,
+            estado_respuesta: 'NOTIFICADO',
+            solicitud: {
+              id_solicitud: 10,
+              tipo_servicio: 'PROGRAMADA',
+              fecha_solicitud: new Date(),
+            },
+          },
+        ],
+      });
+
+      await obtenerSolicitudesTecnico(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      // Solo debe incluir la PROGRAMADA
+      expect(res.jsonData.data.total).toBe(1);
+    });
+
+    it('debe incluir solicitudes INMEDIATO NO expiradas (TTL valid) → 200', async () => {
+      req.usuario = { id_usuario: 10 };
+      req.query = {};
+      mockModels.Tecnico.findOne.mockResolvedValue({ id_tecnico: 5 });
+
+      // Mock solicitud INMEDIATO reciente (10 minutos atrás < 20 minuto TTL)
+      const recentDate = new Date(Date.now() - 10 * 60 * 1000);
+
+      mockModels.TecnicoSolicitudQueue.findAndCountAll.mockResolvedValue({
+        count: 1,
+        rows: [
+          {
+            id_cola: 1,
+            priority_score: 90,
+            estado_respuesta: 'NOTIFICADO',
+            solicitud: {
+              id_solicitud: 11,
+              tipo_servicio: 'INMEDIATO',
+              fecha_solicitud: recentDate,
+            },
+          },
+        ],
+      });
+
+      await obtenerSolicitudesTecnico(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      // Debe incluir la INMEDIATO válida
       expect(res.jsonData.data.total).toBe(1);
     });
 

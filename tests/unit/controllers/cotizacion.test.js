@@ -8,6 +8,8 @@ const mockModels = {
   Solicitud: { findByPk: jest.fn(), update: jest.fn() },
   Cliente: { findOne: jest.fn(), findByPk: jest.fn() },
   Tecnico: { findOne: jest.fn(), findByPk: jest.fn() },
+  Cita: {},
+  Servicio: {},
   TecnicoSolicitudQueue: { findOne: jest.fn(), update: jest.fn() },
   EstadoSolicitud: {},
   Usuario: {},
@@ -39,10 +41,13 @@ const mockLogger = { info: jest.fn(), error: jest.fn(), warn: jest.fn() };
 
 const mockOp = { in: Symbol('in'), ne: Symbol('ne') };
 
+const mockGetInmediataCutoffDate = jest.fn(() => new Date());
+
 jest.unstable_mockModule('../../../models/index.js', () => mockModels);
 jest.unstable_mockModule('../../../utils/errorHandler.js', () => ({ handleError: mockHandleError }));
 jest.unstable_mockModule('../../../utils/logger.js', () => ({ default: mockLogger }));
 jest.unstable_mockModule('sequelize', () => ({ Op: mockOp }));
+jest.unstable_mockModule('../../../services/immediateRequestExpiryService.js', () => ({ getInmediataCutoffDate: mockGetInmediataCutoffDate }));
 jest.unstable_mockModule('../../../sockets/services/socketEmitter.js', () => mockSocketEmitter);
 jest.unstable_mockModule('../../../sockets/services/cotizacionBatcher.js', () => mockCotizacionBatcher);
 
@@ -202,6 +207,34 @@ describe('cotizacionController', () => {
 
       const err = mockHandleError.mock.calls[0][1];
       expect(err).toBeInstanceOf(NotFoundError);
+    });
+
+    it('debe retornar 409 si solicitud INMEDIATO está expirada (TTL)', async () => {
+      req.body = { id_solicitud: 15, valor_cotizacion: 100000 };
+      req.usuario = { id_usuario: 10 };
+
+      // Mock una solicitud INMEDIATO con fecha_solicitud hace 30 minutos (más que 20 min TTL)
+      const expiredDate = new Date(Date.now() - 30 * 60 * 1000);
+      
+      mockModels.Tecnico.findOne.mockResolvedValue({ id_tecnico: 5 });
+      mockModels.Solicitud.findByPk.mockResolvedValue({
+        id_solicitud: 15,
+        id_estado: 2,
+        tipo_servicio: 'INMEDIATO',
+        fecha_solicitud: expiredDate,
+      });
+      mockModels.TecnicoSolicitudQueue.findOne.mockResolvedValue({ id_cola: 1 });
+      // Mock cutoff hace 20 minutos
+      mockGetInmediataCutoffDate.mockReturnValue(new Date(Date.now() - 20 * 60 * 1000));
+
+      await crearCotizacion(req, res);
+
+      const err = mockHandleError.mock.calls[0][1];
+      expect(err).toBeInstanceOf(ConflictError);
+      expect(mockModels.TecnicoSolicitudQueue.update).toHaveBeenCalledWith(
+        expect.objectContaining({ estado_respuesta: 'IGNORADO', motivo_rechazo: 'EXPIRADA_TTL' }),
+        expect.any(Object)
+      );
     });
 
     it('debe retornar 409 si solicitud en estado inválido (ASIGNADA)', async () => {
