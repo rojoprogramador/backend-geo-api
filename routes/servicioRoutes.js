@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
     iniciarServicio,
     finalizarServicio,
+    confirmarPagoServicio,
     obtenerServiciosPorTecnico,
     obtenerServiciosPorCliente,
     obtenerServicioPorId,
@@ -204,6 +205,9 @@ router.get('/cliente/mis-servicios', verifyToken, permitirRoles('CLIENTE'), obte
 
 // PUT /api/servicios/:id/finalizar — HU-16: Técnico finaliza el servicio y registra pago
 router.put('/:id/finalizar', verifyToken, permitirRoles('TECNICO'), finalizarServicio);
+
+// PUT /api/servicios/:id/confirmar-pago — Cliente confirma el pago después de finalización
+router.put('/:id/confirmar-pago', verifyToken, permitirRoles('CLIENTE'), confirmarPagoServicio);
 
 // GET /api/servicios/:id — HU-16: Ver detalle de un servicio (Cliente, Técnico o Admin)
 router.get('/:id', verifyToken, obtenerServicioPorId);

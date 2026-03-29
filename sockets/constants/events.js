@@ -38,6 +38,7 @@ export const SERVER_EVENTS = {
     // --- /servicios namespace ---
     SERVICIO_INICIADO:        'server:servicio_iniciado',
     SERVICIO_FINALIZADO:      'server:servicio_finalizado',
+    PAGO_CONFIRMADO:          'server:pago_confirmado',
     CALIFICACION_RECIBIDA:    'server:calificacion_recibida',
 
     // --- /tracking namespace ---

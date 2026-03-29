@@ -32,6 +32,7 @@ jest.unstable_mockModule('../../../sockets/constants/events.js', () => ({
         COTIZACION_RECHAZADA:'server:cotizacion_rechazada',
         SERVICIO_INICIADO:   'server:servicio_iniciado',
         SERVICIO_FINALIZADO: 'server:servicio_finalizado',
+        PAGO_CONFIRMADO:     'server:pago_confirmado',
         CALIFICACION_RECIBIDA:'server:calificacion_recibida',
     },
     CLIENT_EVENTS: {},
@@ -47,6 +48,7 @@ const {
     emitCotizacionRechazada,
     emitServicioIniciado,
     emitServicioFinalizado,
+    emitPagoConfirmado,
     emitCalificacionRecibida,
 } = await import('../../../sockets/services/socketEmitter.js');
 
@@ -522,6 +524,72 @@ describe('sockets/services/socketEmitter', () => {
 
             expect(mockLogger.info).toHaveBeenCalledWith(
                 expect.stringContaining('canal=PUSH evento=SERVICIO_COMPLETADO resultado=ERROR')
+            );
+        });
+    });
+
+    describe('emitPagoConfirmado', () => {
+        it('no-op cuando io es null', () => {
+            setIO(null);
+            expect(() => emitPagoConfirmado({
+                id_solicitud: 1, id_tecnico_usuario: 2, pagoData: {},
+            })).not.toThrow();
+        });
+
+        it('emite a room user:{id_tecnico_usuario}', () => {
+            const { io, toFn, emitFn } = createMockIO();
+            setIO(io);
+
+            const pagoData = { id_servicio: 8, id_transaccion: 5, monto_tecnico: 153000, estado_pago: 'COMPLETADO' };
+            emitPagoConfirmado({
+                id_solicitud: 15,
+                id_tecnico_usuario: 100,
+                pagoData,
+            });
+
+            expect(io.of).toHaveBeenCalledWith('/servicios');
+            expect(toFn).toHaveBeenCalledWith('user:100');
+            expect(emitFn).toHaveBeenCalledWith(
+                'server:pago_confirmado',
+                expect.objectContaining({ id_solicitud: 15, id_servicio: 8, estado_pago: 'COMPLETADO' })
+            );
+        });
+
+        it('envía push PAGO_CONFIRMADO y logea ENVIADO', async () => {
+            const { io } = createMockIO();
+            setIO(io);
+
+            emitPagoConfirmado({
+                id_solicitud: 15,
+                id_tecnico_usuario: 100,
+                pagoData: { id_servicio: 8, id_transaccion: 5, monto_tecnico: 153000 },
+            });
+
+            await flushPromises();
+
+            expect(mockEnviarPush).toHaveBeenCalledWith(100, expect.objectContaining({
+                tipo: 'PAGO_CONFIRMADO',
+            }));
+            expect(mockLogger.info).toHaveBeenCalledWith(
+                expect.stringContaining('canal=PUSH evento=PAGO_CONFIRMADO resultado=ENVIADO')
+            );
+        });
+
+        it('logea ERROR cuando push PAGO_CONFIRMADO falla', async () => {
+            const { io } = createMockIO();
+            setIO(io);
+            mockEnviarPush.mockRejectedValue(new Error('pago_push_fail'));
+
+            emitPagoConfirmado({
+                id_solicitud: 15,
+                id_tecnico_usuario: 100,
+                pagoData: { id_servicio: 8, monto_tecnico: 153000 },
+            });
+
+            await flushPromises();
+
+            expect(mockLogger.info).toHaveBeenCalledWith(
+                expect.stringContaining('canal=PUSH evento=PAGO_CONFIRMADO resultado=ERROR')
             );
         });
     });

@@ -438,6 +438,52 @@ export const emitServicioFinalizado = (params) => {
     });
 };
 
+// ─── Pago ────────────────────────────────────────────────
+
+/**
+ * Notifica al técnico que el cliente confirmó el pago.
+ * @param {Object} params
+ * @param {number} params.id_solicitud
+ * @param {number} params.id_tecnico_usuario - id_usuario del técnico
+ * @param {Object} params.pagoData - { id_servicio, id_transaccion, monto_tecnico, estado_pago }
+ */
+export const emitPagoConfirmado = (params) => {
+    if (!io) return;
+    const { id_solicitud, id_tecnico_usuario, pagoData } = params;
+
+    io.of('/servicios').to(`user:${id_tecnico_usuario}`).emit(
+        SERVER_EVENTS.PAGO_CONFIRMADO,
+        { id_solicitud, ...pagoData }
+    );
+
+    logDelivery({
+        canal: 'WS',
+        evento: SERVER_EVENTS.PAGO_CONFIRMADO,
+        resultado: 'ENVIADO',
+        id_solicitud,
+        id_tecnico: pagoData?.id_tecnico ?? null,
+        id_usuario: id_tecnico_usuario,
+        detalle: `room=user:${id_tecnico_usuario}`,
+    });
+
+    logger.info(
+        `socketEmitter: emitPagoConfirmado solicitud=${id_solicitud} -> user:${id_tecnico_usuario}`
+    );
+
+    // ── Push notification al técnico ──
+    pushConLog(id_tecnico_usuario, {
+        tipo: 'PAGO_CONFIRMADO',
+        titulo: 'Pago confirmado',
+        mensaje: `El cliente confirmó el pago de $${pagoData.monto_tecnico || 0}`,
+        datos: { id_solicitud, id_servicio: pagoData.id_servicio },
+    }, {
+        evento: 'PAGO_CONFIRMADO',
+        id_solicitud,
+        id_tecnico: pagoData?.id_tecnico ?? null,
+        id_usuario: id_tecnico_usuario,
+    });
+};
+
 // ─── Calificaciones ───────────────────────────────────────
 
 /**
