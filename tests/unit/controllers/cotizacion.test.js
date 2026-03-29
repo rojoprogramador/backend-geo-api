@@ -493,7 +493,7 @@ describe('cotizacionController', () => {
       expect(err).toBeInstanceOf(ConflictError);
     });
 
-    it('debe emitir WebSocket al aceptar cotización con técnico ganador → 200', async () => {
+    it('debe emitir WebSocket al aceptar cotización PROGRAMADO con técnico ganador → 200', async () => {
       req.params = { id: '7' };
       req.usuario = { id_usuario: 10 };
 
@@ -509,7 +509,7 @@ describe('cotizacionController', () => {
       mockModels.Solicitud.update.mockResolvedValue([1]);
       mockModels.Tecnico.findByPk.mockResolvedValue({ id_tecnico: 5, id_usuario: 30 });
       mockModels.Cotizacion.findAll.mockResolvedValue([{ id_tecnico: 6 }]);
-      
+
       // Mock para las búsquedas post-commit
       mockModels.Cita.findOne.mockResolvedValue({ id_cita: 100 });
       mockModels.Servicio.findOne.mockResolvedValue(null);
@@ -519,6 +519,64 @@ describe('cotizacionController', () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(mockSocketEmitter.emitCotizacionAceptada).toHaveBeenCalled();
       expect(mockCotizacionBatcher.cancelBatch).toHaveBeenCalledWith(15);
+
+      const emitCall = mockSocketEmitter.emitCotizacionAceptada.mock.calls[0][0];
+      expect(emitCall.cotizacionData.datos.destino_logico).toBe('AGENDA');
+      expect(emitCall.cotizacionData.datos.id_cita).toBe(100);
+      expect(emitCall.cotizacionData.datos.id_servicio).toBeNull();
+    });
+
+    it('debe emitir contrato con destino SERVICIO_TRACKING para INMEDIATO → 200', async () => {
+      req.params = { id: '7' };
+      req.usuario = { id_usuario: 10 };
+
+      mockModels.Cliente.findOne.mockResolvedValue({ id_cliente: 3 });
+      mockModels.Cotizacion.findByPk.mockResolvedValue({
+        id_cotizacion: 7,
+        id_solicitud: 15,
+        id_tecnico: 5,
+        estado: 'PENDIENTE',
+        solicitud: { id_solicitud: 15, id_cliente: 3, id_estado: 3, tipo_servicio: 'INMEDIATO' },
+      });
+      mockModels.Cotizacion.update.mockResolvedValue([1]);
+      mockModels.Solicitud.update.mockResolvedValue([1]);
+      mockModels.Tecnico.findByPk.mockResolvedValue({ id_tecnico: 5, id_usuario: 30 });
+      mockModels.Cotizacion.findAll.mockResolvedValue([]);
+      mockModels.Cita.findOne.mockResolvedValue(null);
+      mockModels.Servicio.findOne.mockResolvedValue({ id_servicio: 55 });
+
+      await aceptarCotizacion(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      const emitCall = mockSocketEmitter.emitCotizacionAceptada.mock.calls[0][0];
+      expect(emitCall.cotizacionData.datos.destino_logico).toBe('SERVICIO_TRACKING');
+      expect(emitCall.cotizacionData.datos.id_servicio).toBe(55);
+      expect(emitCall.cotizacionData.datos.id_cita).toBeNull();
+    });
+
+    it('debe continuar sin error si WebSocket emit falla (best-effort)', async () => {
+      req.params = { id: '7' };
+      req.usuario = { id_usuario: 10 };
+
+      mockModels.Cliente.findOne.mockResolvedValue({ id_cliente: 3 });
+      mockModels.Cotizacion.findByPk.mockResolvedValue({
+        id_cotizacion: 7,
+        id_solicitud: 15,
+        id_tecnico: 5,
+        estado: 'PENDIENTE',
+        solicitud: { id_solicitud: 15, id_cliente: 3, id_estado: 3, tipo_servicio: 'PROGRAMADO' },
+      });
+      mockModels.Cotizacion.update.mockResolvedValue([1]);
+      mockModels.Solicitud.update.mockResolvedValue([1]);
+      // Tecnico.findByPk throws → triggers wsErr catch
+      mockModels.Tecnico.findByPk.mockRejectedValue(new Error('WS lookup failed'));
+
+      await aceptarCotizacion(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('WebSocket emit falló')
+      );
     });
   });
 

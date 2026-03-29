@@ -42,6 +42,27 @@ const logDelivery = ({
 };
 
 /**
+ * Envía push notification con trazabilidad automática (best-effort, fire-and-forget).
+ * @param {number} idUsuario
+ * @param {Object} pushPayload - { tipo, titulo, mensaje, datos }
+ * @param {Object} logCtx     - { evento, id_solicitud, id_tecnico, id_usuario }
+ */
+const pushConLog = (idUsuario, pushPayload, logCtx) => {
+    enviarPushNotificacion(idUsuario, pushPayload)
+        .then(() => {
+            logDelivery({ canal: 'PUSH', resultado: 'ENVIADO', ...logCtx });
+        })
+        .catch((error) => {
+            logDelivery({
+                canal: 'PUSH',
+                resultado: 'ERROR',
+                ...logCtx,
+                detalle: error?.message || 'error_desconocido',
+            });
+        });
+};
+
+/**
  * Establece la instancia de Socket.IO. Se llama una vez al iniciar el servidor.
  * @param {import('socket.io').Server} socketIOInstance
  */
@@ -203,33 +224,17 @@ export const emitNuevaCotizacion = (params) => {
     );
 
     // ── Push notification al cliente ──
-    enviarPushNotificacion(id_cliente_usuario, {
+    pushConLog(id_cliente_usuario, {
         tipo: 'COTIZACION_RECIBIDA',
         titulo: 'Nueva cotización recibida',
         mensaje: `Cotización de $${cotizacionData.valor_cotizacion || 0}`,
         datos: { id_solicitud, id_cotizacion: cotizacionData.id_cotizacion },
-    })
-        .then(() => {
-            logDelivery({
-                canal: 'PUSH',
-                evento: 'COTIZACION_RECIBIDA',
-                resultado: 'ENVIADO',
-                id_solicitud,
-                id_tecnico: cotizacionData?.id_tecnico ?? null,
-                id_usuario: id_cliente_usuario,
-            });
-        })
-        .catch((error) => {
-            logDelivery({
-                canal: 'PUSH',
-                evento: 'COTIZACION_RECIBIDA',
-                resultado: 'ERROR',
-                id_solicitud,
-                id_tecnico: cotizacionData?.id_tecnico ?? null,
-                id_usuario: id_cliente_usuario,
-                detalle: error?.message || 'error_desconocido',
-            });
-        });
+    }, {
+        evento: 'COTIZACION_RECIBIDA',
+        id_solicitud,
+        id_tecnico: cotizacionData?.id_tecnico ?? null,
+        id_usuario: id_cliente_usuario,
+    });
 };
 
 /**
@@ -300,33 +305,17 @@ export const emitCotizacionAceptada = (params) => {
     );
 
     // ── Push notification al técnico ganador ──
-    enviarPushNotificacion(id_tecnico_ganador_usuario, {
+    pushConLog(id_tecnico_ganador_usuario, {
         tipo: 'COTIZACION_ACEPTADA',
         titulo: '¡Tu cotización fue aceptada!',
         mensaje: 'El cliente aceptó tu cotización. Prepárate para el servicio.',
         datos: payloadUnificado.datos,
-    })
-        .then(() => {
-            logDelivery({
-                canal: 'PUSH',
-                evento: 'COTIZACION_ACEPTADA',
-                resultado: 'ENVIADO',
-                id_solicitud,
-                id_tecnico: payloadUnificado?.datos?.id_tecnico ?? null,
-                id_usuario: id_tecnico_ganador_usuario,
-            });
-        })
-        .catch((error) => {
-            logDelivery({
-                canal: 'PUSH',
-                evento: 'COTIZACION_ACEPTADA',
-                resultado: 'ERROR',
-                id_solicitud,
-                id_tecnico: payloadUnificado?.datos?.id_tecnico ?? null,
-                id_usuario: id_tecnico_ganador_usuario,
-                detalle: error?.message || 'error_desconocido',
-            });
-        });
+    }, {
+        evento: 'COTIZACION_ACEPTADA',
+        id_solicitud,
+        id_tecnico: payloadUnificado?.datos?.id_tecnico ?? null,
+        id_usuario: id_tecnico_ganador_usuario,
+    });
 };
 
 /**
@@ -392,33 +381,17 @@ export const emitServicioIniciado = (params) => {
     );
 
     // ── Push notification al cliente ──
-    enviarPushNotificacion(id_cliente_usuario, {
+    pushConLog(id_cliente_usuario, {
         tipo: 'SERVICIO_INICIADO',
         titulo: 'Servicio iniciado',
         mensaje: 'El técnico ha iniciado el servicio',
         datos: { id_solicitud, id_servicio: servicioData.id_servicio },
-    })
-        .then(() => {
-            logDelivery({
-                canal: 'PUSH',
-                evento: 'SERVICIO_INICIADO',
-                resultado: 'ENVIADO',
-                id_solicitud,
-                id_tecnico: servicioData?.id_tecnico ?? null,
-                id_usuario: id_cliente_usuario,
-            });
-        })
-        .catch((error) => {
-            logDelivery({
-                canal: 'PUSH',
-                evento: 'SERVICIO_INICIADO',
-                resultado: 'ERROR',
-                id_solicitud,
-                id_tecnico: servicioData?.id_tecnico ?? null,
-                id_usuario: id_cliente_usuario,
-                detalle: error?.message || 'error_desconocido',
-            });
-        });
+    }, {
+        evento: 'SERVICIO_INICIADO',
+        id_solicitud,
+        id_tecnico: servicioData?.id_tecnico ?? null,
+        id_usuario: id_cliente_usuario,
+    });
 };
 
 /**
@@ -452,33 +425,17 @@ export const emitServicioFinalizado = (params) => {
     );
 
     // ── Push notification al cliente ──
-    enviarPushNotificacion(id_cliente_usuario, {
+    pushConLog(id_cliente_usuario, {
         tipo: 'SERVICIO_COMPLETADO',
         titulo: 'Servicio completado',
         mensaje: 'El servicio ha finalizado. Por favor califica al técnico.',
         datos: { id_solicitud, id_servicio: servicioData.id_servicio },
-    })
-        .then(() => {
-            logDelivery({
-                canal: 'PUSH',
-                evento: 'SERVICIO_COMPLETADO',
-                resultado: 'ENVIADO',
-                id_solicitud,
-                id_tecnico: servicioData?.id_tecnico ?? null,
-                id_usuario: id_cliente_usuario,
-            });
-        })
-        .catch((error) => {
-            logDelivery({
-                canal: 'PUSH',
-                evento: 'SERVICIO_COMPLETADO',
-                resultado: 'ERROR',
-                id_solicitud,
-                id_tecnico: servicioData?.id_tecnico ?? null,
-                id_usuario: id_cliente_usuario,
-                detalle: error?.message || 'error_desconocido',
-            });
-        });
+    }, {
+        evento: 'SERVICIO_COMPLETADO',
+        id_solicitud,
+        id_tecnico: servicioData?.id_tecnico ?? null,
+        id_usuario: id_cliente_usuario,
+    });
 };
 
 // ─── Calificaciones ───────────────────────────────────────
@@ -513,31 +470,15 @@ export const emitCalificacionRecibida = (params) => {
     );
 
     // ── Push notification al técnico ──
-    enviarPushNotificacion(id_tecnico_usuario, {
+    pushConLog(id_tecnico_usuario, {
         tipo: 'CALIFICACION_RECIBIDA',
         titulo: 'Nueva calificación recibida',
         mensaje: `Recibiste una calificación de ${calificacionData.puntuacion || calificacionData.calificacion || ''} estrellas`,
         datos: calificacionData,
-    })
-        .then(() => {
-            logDelivery({
-                canal: 'PUSH',
-                evento: 'CALIFICACION_RECIBIDA',
-                resultado: 'ENVIADO',
-                id_solicitud: calificacionData?.id_solicitud ?? null,
-                id_tecnico: calificacionData?.id_tecnico ?? null,
-                id_usuario: id_tecnico_usuario,
-            });
-        })
-        .catch((error) => {
-            logDelivery({
-                canal: 'PUSH',
-                evento: 'CALIFICACION_RECIBIDA',
-                resultado: 'ERROR',
-                id_solicitud: calificacionData?.id_solicitud ?? null,
-                id_tecnico: calificacionData?.id_tecnico ?? null,
-                id_usuario: id_tecnico_usuario,
-                detalle: error?.message || 'error_desconocido',
-            });
-        });
+    }, {
+        evento: 'CALIFICACION_RECIBIDA',
+        id_solicitud: calificacionData?.id_solicitud ?? null,
+        id_tecnico: calificacionData?.id_tecnico ?? null,
+        id_usuario: id_tecnico_usuario,
+    });
 };

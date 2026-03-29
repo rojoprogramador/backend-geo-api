@@ -39,12 +39,17 @@ jest.unstable_mockModule('../../../sockets/constants/events.js', () => ({
     CLIENT_EVENTS: {},
 }));
 
+const mockLogger = (await import('../../../utils/logger.js')).default;
+
 const {
     addCotizacion,
     cancelBatch,
     clearAllBatches,
     getBatchInfo,
 } = await import('../../../sockets/services/cotizacionBatcher.js');
+
+/** Flush microtasks while fake timers are active */
+const flushPromises = () => jest.advanceTimersByTimeAsync(0);
 
 describe('sockets/services/cotizacionBatcher', () => {
     beforeEach(() => {
@@ -227,6 +232,60 @@ describe('sockets/services/cotizacionBatcher', () => {
 
             expect(getBatchInfo(100).count).toBe(2);
             expect(getBatchInfo(200).count).toBe(1);
+        });
+    });
+
+    describe('push delivery logs en closeBatch', () => {
+        it('logea delivery PUSH ENVIADO cuando push resuelve OK', async () => {
+            mockEnviarPush.mockResolvedValue(null);
+
+            for (let i = 0; i < 5; i++) {
+                addCotizacion(100, 500);
+            }
+
+            await flushPromises();
+
+            expect(mockLogger.info).toHaveBeenCalledWith(
+                expect.stringContaining('canal=PUSH evento=COTIZACIONES_LISTAS resultado=ENVIADO')
+            );
+        });
+
+        it('logea delivery PUSH ERROR cuando push rechaza', async () => {
+            mockEnviarPush.mockRejectedValue(new Error('push_fallido'));
+
+            for (let i = 0; i < 5; i++) {
+                addCotizacion(100, 500);
+            }
+
+            await flushPromises();
+
+            expect(mockLogger.warn).toHaveBeenCalledWith(
+                expect.stringContaining('canal=PUSH evento=COTIZACIONES_LISTAS resultado=ERROR')
+            );
+        });
+
+        it('logea WS delivery al cerrar batch', () => {
+            for (let i = 0; i < 5; i++) {
+                addCotizacion(100, 500);
+            }
+
+            expect(mockLogger.info).toHaveBeenCalledWith(
+                expect.stringContaining('canal=WS evento=server:cotizaciones_listas resultado=ENVIADO')
+            );
+        });
+    });
+
+    describe('cleanup timer', () => {
+        it('elimina batch del mapa 10s después de cerrar', () => {
+            for (let i = 0; i < 5; i++) {
+                addCotizacion(100, 500);
+            }
+
+            expect(getBatchInfo(100)).toBeDefined();
+
+            jest.advanceTimersByTime(10000);
+
+            expect(getBatchInfo(100)).toBeUndefined();
         });
     });
 });

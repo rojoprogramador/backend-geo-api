@@ -1118,5 +1118,55 @@ describe('tecnicoController', () => {
       const err = mockHandleError.mock.calls[0][1];
       expect(err).toBeInstanceOf(NotFoundError);
     });
+
+    it('debe retornar servicio_activo con datos cuando existe servicio en curso', async () => {
+      mockModels.Servicio.findOne.mockResolvedValue({
+        id_servicio: 42,
+        id_solicitud: 10,
+        id_estado: 5,
+        fecha_servicio: '2026-03-29T14:00:00Z',
+        createdAt: '2026-03-29T13:00:00Z',
+        solicitud_origen: {
+          id_solicitud: 10,
+          tipo_servicio: 'INMEDIATO',
+          direccion_servicio: 'Calle 5 #10-20',
+        },
+      });
+
+      await obtenerEstadoActualTecnico(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      const sa = res.jsonData.data.servicio_activo;
+      expect(sa).not.toBeNull();
+      expect(sa.id_servicio).toBe(42);
+      expect(sa.tipo_servicio).toBe('INMEDIATO');
+      expect(sa.direccion_servicio).toBe('Calle 5 #10-20');
+    });
+
+    it('debe retornar servicio_activo null si solicitud_origen es null', async () => {
+      mockModels.Servicio.findOne.mockResolvedValue({
+        id_servicio: 42,
+        id_solicitud: 10,
+        id_estado: 5,
+        fecha_servicio: null,
+        createdAt: '2026-03-29T13:00:00Z',
+        solicitud_origen: null,
+      });
+
+      await obtenerEstadoActualTecnico(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      const sa = res.jsonData.data.servicio_activo;
+      expect(sa.tipo_servicio).toBeNull();
+      expect(sa.direccion_servicio).toBeNull();
+    });
+
+    it('debe retornar 500 si ocurre error inesperado', async () => {
+      mockBuscarPerfilTecnico.mockRejectedValue(new Error('DB connection lost'));
+
+      await obtenerEstadoActualTecnico(req, res);
+
+      expect(mockHandleError).toHaveBeenCalled();
+    });
   });
 });
