@@ -13,6 +13,8 @@ import {
     Especialidad,
     Cita,
     Solicitud,
+    Servicio,
+    TecnicoSolicitudQueue,
     EstadoSolicitud,
     Cliente,
 } from '../models/index.js';
@@ -21,6 +23,7 @@ import { ValidationError, ConflictError, NotFoundError, ForbiddenError } from '.
 import logger from '../utils/logger.js';
 import { REGEX_NOMBRE, REGEX_DOCUMENTO, REGEX_CORREO, REGEX_TELEFONO, REGEX_FECHA, esContrasenaFuerte } from '../utils/validators.js';
 import { obtenerTecnico as buscarPerfilTecnico } from '../utils/profileHelpers.js';
+import { getInmediataCutoffDate } from '../services/immediateRequestExpiryService.js';
 
 // ---------------------------------------------------------------------------
 
@@ -2394,6 +2397,159 @@ export const obtenerAgendaTecnico = async (req, res) => {
             },
         });
 
+    } catch (error) {
+        return handleError(res, error);
+    }
+};
+
+// ---------------------------------------------------------------------------
+
+/**
+ * @swagger
+ * /tecnicos/estado-actual:
+ *   get:
+ *     summary: Obtener estado actual del técnico autenticado
+ *     description: |
+ *       Retorna un snapshot consolidado para rehidratar la app del técnico al abrir:
+ *       disponibilidad real, servicio activo, citas próximas asignadas y
+ *       solicitud inmediata pendiente (si existe).
+ *     tags: [Tecnicos]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Estado actual obtenido exitosamente
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       403:
+ *         $ref: '#/components/responses/ForbiddenError'
+ *       404:
+ *         $ref: '#/components/responses/NotFoundError'
+ */
+export const obtenerEstadoActualTecnico = async (req, res) => {
+    try {
+        if (req.usuario.rol !== 'TECNICO') {
+            throw new ForbiddenError('Esta ruta es exclusiva para técnicos');
+        }
+
+        const tecnico = await buscarPerfilTecnico(req.usuario.id_usuario);
+        const cutoffInmediata = getInmediataCutoffDate();
+
+        const servicioActivo = await Servicio.findOne({
+            where: {
+                id_tecnico: tecnico.id_tecnico,
+                id_estado: 5,
+            },
+            attributes: ['id_servicio', 'id_solicitud', 'id_estado', 'fecha_servicio', 'createdAt'],
+            include: [
+                {
+                    model: Solicitud,
+                    as: 'solicitud_origen',
+                    attributes: ['id_solicitud', 'tipo_servicio', 'direccion_servicio'],
+                },
+            ],
+            order: [['createdAt', 'DESC']],
+        });
+
+        const citasProximas = await Cita.findAll({
+            where: {
+                fecha_cita: { [Op.gte]: new Date() },
+                id_estado: { [Op.notIn]: [6, 7] },
+            },
+            include: [
+                {
+                    model: Solicitud,
+                    as: 'solicitud',
+                    required: true,
+                    where: {
+                        id_tecnico: tecnico.id_tecnico,
+                        tipo_servicio: 'PROGRAMADO',
+                    },
+                    attributes: ['id_solicitud', 'tipo_servicio', 'direccion_servicio', 'descripcion'],
+                },
+                {
+                    model: EstadoSolicitud,
+                    as: 'estado',
+                    attributes: ['id_estado', 'descripcion'],
+                },
+            ],
+            attributes: ['id_cita', 'id_estado', 'fecha_cita'],
+            order: [['fecha_cita', 'ASC']],
+            limit: 10,
+        });
+
+        const solicitudInmediataPendiente = await TecnicoSolicitudQueue.findOne({
+            where: {
+                id_tecnico: tecnico.id_tecnico,
+                estado_respuesta: ['NOTIFICADO', 'VISTO'],
+            },
+            include: [
+                {
+                    model: Solicitud,
+                    as: 'solicitud',
+                    required: true,
+                    where: {
+                        tipo_servicio: 'INMEDIATO',
+                        fecha_solicitud: { [Op.gte]: cutoffInmediata },
+                    },
+                    attributes: ['id_solicitud', 'tipo_servicio', 'descripcion', 'prioridad', 'direccion_servicio', 'fecha_solicitud'],
+                    include: [
+                        {
+                            model: EstadoSolicitud,
+                            as: 'estado',
+                            attributes: ['id_estado', 'descripcion'],
+                        },
+                    ],
+                },
+            ],
+            attributes: ['id_cola', 'priority_score', 'estado_respuesta', 'fecha_notificacion'],
+            order: [['priority_score', 'DESC'], ['fecha_notificacion', 'DESC']],
+        });
+
+        logger.info(
+            `obtenerEstadoActualTecnico: Técnico ${tecnico.id_tecnico} consultó estado actual`
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: 'Estado actual del técnico obtenido exitosamente',
+            data: {
+                disponibilidad: {
+                    disponible_inmediato: tecnico.disponible_inmediato,
+                    estado_validacion: tecnico.estado_validacion,
+                    radio_cobertura_km: tecnico.radio_cobertura_km,
+                    tipo_cobertura: tecnico.tipo_cobertura,
+                },
+                servicio_activo: servicioActivo
+                    ? {
+                        id_servicio: servicioActivo.id_servicio,
+                        id_solicitud: servicioActivo.id_solicitud,
+                        id_estado: servicioActivo.id_estado,
+                        fecha_servicio: servicioActivo.fecha_servicio,
+                        tipo_servicio: servicioActivo.solicitud_origen?.tipo_servicio ?? null,
+                        direccion_servicio: servicioActivo.solicitud_origen?.direccion_servicio ?? null,
+                    }
+                    : null,
+                citas_proximas_asignadas: citasProximas.map((cita) => ({
+                    id_cita: cita.id_cita,
+                    fecha_cita: cita.fecha_cita,
+                    id_estado: cita.id_estado,
+                    estado: cita.estado?.descripcion ?? null,
+                    id_solicitud: cita.solicitud?.id_solicitud ?? null,
+                    descripcion: cita.solicitud?.descripcion ?? null,
+                    direccion_servicio: cita.solicitud?.direccion_servicio ?? null,
+                })),
+                solicitud_inmediata_pendiente: solicitudInmediataPendiente
+                    ? {
+                        id_cola: solicitudInmediataPendiente.id_cola,
+                        priority_score: solicitudInmediataPendiente.priority_score,
+                        estado_respuesta: solicitudInmediataPendiente.estado_respuesta,
+                        fecha_notificacion: solicitudInmediataPendiente.fecha_notificacion,
+                        solicitud: solicitudInmediataPendiente.solicitud,
+                    }
+                    : null,
+            },
+        });
     } catch (error) {
         return handleError(res, error);
     }

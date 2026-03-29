@@ -14,6 +14,7 @@ const Notificacion = sequelize.define('Notificacion', {
     tipo: {
         type: DataTypes.ENUM(
             'NUEVA_SOLICITUD',
+            'COTIZACIONES_LISTAS',
             'COTIZACION_RECIBIDA',
             'COTIZACION_ACEPTADA',
             'CITA_CONFIRMADA',

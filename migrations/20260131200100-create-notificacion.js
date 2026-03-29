@@ -24,6 +24,7 @@ export default {
       tipo: {
         type: Sequelize.ENUM(
           'NUEVA_SOLICITUD',
+          'COTIZACIONES_LISTAS',
           'COTIZACION_RECIBIDA',
           'COTIZACION_ACEPTADA',
           'CITA_CONFIRMADA',

@@ -4,6 +4,8 @@ import {
     Cotizacion,
     Solicitud,
     Tecnico,
+    Cita,
+    Servicio,
     TecnicoSolicitudQueue,
     EstadoSolicitud,
     Usuario,
@@ -14,6 +16,7 @@ import { ValidationError, NotFoundError, ForbiddenError, ConflictError } from '.
 import logger from '../utils/logger.js';
 import { obtenerCliente, obtenerTecnico } from '../utils/profileHelpers.js';
 import { setCooldown } from '../utils/cooldownManager.js';
+import { getInmediataCutoffDate } from '../services/immediateRequestExpiryService.js';
 
 // ---------------------------------------------------------------------------
 // Constantes de estados de solicitud (sincronizadas con seeders)
@@ -244,6 +247,31 @@ export const crearCotizacion = async (req, res) => {
             throw new ForbiddenError(
                 'No tienes autorización para cotizar esta solicitud. ' +
                 'Debes estar notificado para la solicitud y no haber cotizado previamente'
+            );
+        }
+
+        // ----------------------------------------------------------------
+        // 6.1. Bloquear cotización de solicitudes INMEDIATAS expiradas por TTL
+        // ----------------------------------------------------------------
+        if (
+            solicitud.tipo_servicio === 'INMEDIATO' &&
+            new Date(solicitud.fecha_solicitud).getTime() < getInmediataCutoffDate().getTime()
+        ) {
+            await TecnicoSolicitudQueue.update(
+                {
+                    estado_respuesta: 'IGNORADO',
+                    motivo_rechazo: 'EXPIRADA_TTL',
+                    fecha_respuesta: new Date(),
+                },
+                {
+                    where: { id_cola: entradaCola.id_cola },
+                    transaction: t,
+                }
+            );
+
+            await t.rollback();
+            throw new ConflictError(
+                'La solicitud inmediata expiró por tiempo de respuesta y ya no admite cotizaciones'
             );
         }
 
@@ -640,7 +668,7 @@ export const aceptarCotizacion = async (req, res) => {
                 {
                     model: Solicitud,
                     as:    'solicitud',
-                    attributes: ['id_solicitud', 'id_cliente', 'id_estado'],
+                    attributes: ['id_solicitud', 'id_cliente', 'id_estado', 'tipo_servicio'],
                 },
             ],
             transaction: t,
@@ -733,6 +761,37 @@ export const aceptarCotizacion = async (req, res) => {
             const { cancelBatch } = await import('../sockets/services/cotizacionBatcher.js');
 
             const tecnicoGanador = await Tecnico.findByPk(idTecnico, { attributes: ['id_usuario'] });
+            const citaAsignada = await Cita.findOne({
+                where: { id_solicitud: idSolicitud },
+                attributes: ['id_cita'],
+                order: [['fecha_cita', 'ASC']],
+            });
+
+            const servicioAsignado = await Servicio.findOne({
+                where: { id_solicitud: idSolicitud },
+                attributes: ['id_servicio'],
+                order: [['createdAt', 'DESC']],
+            });
+
+            const contratoAsignacion = {
+                tipo: 'COTIZACION_ACEPTADA',
+                datos: {
+                    id_solicitud: idSolicitud,
+                    id_tecnico: idTecnico,
+                    tipo_servicio: cotizacion.solicitud.tipo_servicio,
+                    id_cita: cotizacion.solicitud.tipo_servicio === 'PROGRAMADO'
+                        ? (citaAsignada?.id_cita ?? null)
+                        : null,
+                    id_servicio: cotizacion.solicitud.tipo_servicio === 'INMEDIATO'
+                        ? (servicioAsignado?.id_servicio ?? null)
+                        : null,
+                    estado: 'ASIGNADA',
+                    destino_logico: cotizacion.solicitud.tipo_servicio === 'PROGRAMADO'
+                        ? 'AGENDA'
+                        : 'SERVICIO_TRACKING',
+                },
+            };
+
             const cotizacionesRechazadas = await Cotizacion.findAll({
                 where: { id_solicitud: idSolicitud, estado: 'RECHAZADA' },
                 attributes: ['id_tecnico'],
@@ -748,15 +807,7 @@ export const aceptarCotizacion = async (req, res) => {
                 id_solicitud: idSolicitud,
                 id_tecnico_ganador_usuario: tecnicoGanador?.id_usuario,
                 tecnicosRechazados: idsRechazados.filter(Boolean),
-                cotizacionData: {
-                    id_cotizacion:       idCotizacion,
-                    id_solicitud:        idSolicitud,
-                    id_tecnico:          idTecnico,
-                    valor_cotizacion:    Number.parseFloat(cotizacion.valor_cotizacion),
-                    descripcion_trabajo: cotizacion.descripcion || null,
-                    tiempo_estimado:     cotizacion.tiempo_estimado || null,
-                    estado:              'ACEPTADA',
-                },
+                cotizacionData: contratoAsignacion,
             });
             cancelBatch(idSolicitud);
         } catch (wsErr) {

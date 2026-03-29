@@ -81,6 +81,11 @@ const closeBatch = (id_solicitud, razon) => {
                 total_cotizaciones: batch.count,
                 mensaje: `Ya tienes ${batch.count} cotización(es) disponibles para comparar.`,
             });
+
+        logger.info(
+            `delivery canal=WS evento=${SERVER_EVENTS.COTIZACIONES_LISTAS} resultado=ENVIADO ` +
+            `id_solicitud=${id_solicitud} id_tecnico=null id_usuario=${batch.id_cliente_usuario}`
+        );
     }
 
     logger.info(
@@ -93,7 +98,20 @@ const closeBatch = (id_solicitud, razon) => {
         titulo: 'Cotizaciones disponibles',
         mensaje: `Ya tienes ${batch.count} cotización(es) disponibles para comparar.`,
         datos: { id_solicitud, total_cotizaciones: batch.count },
-    }).catch(() => {});
+    })
+        .then(() => {
+            logger.info(
+                `delivery canal=PUSH evento=COTIZACIONES_LISTAS resultado=ENVIADO ` +
+                `id_solicitud=${id_solicitud} id_tecnico=null id_usuario=${batch.id_cliente_usuario}`
+            );
+        })
+        .catch((error) => {
+            logger.warn(
+                `delivery canal=PUSH evento=COTIZACIONES_LISTAS resultado=ERROR ` +
+                `id_solicitud=${id_solicitud} id_tecnico=null id_usuario=${batch.id_cliente_usuario} ` +
+                `detalle=${error?.message || 'error_desconocido'}`
+            );
+        });
 
     setTimeout(() => activeBatches.delete(id_solicitud), 10000);
 };
