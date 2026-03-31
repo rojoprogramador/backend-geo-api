@@ -666,6 +666,23 @@ describe('servicioController', () => {
       expect(res.status).toHaveBeenCalledWith(200);
     });
 
+    it('debe retornar servicio e incluir ultima ubicacion del tecnico', async () => {
+      req.params = { id: '8' };
+      req.usuario = { id_usuario: 1, rol: 'CLIENTE' };
+
+      mockModels.Servicio.findByPk.mockResolvedValue(mockServicioCompleto);
+      mockModels.Cliente.findOne.mockResolvedValue({ id_cliente: 3 });
+      mockModels.TrackingUbicacion.findOne.mockResolvedValue({
+        ubicacion_actual: { coordinates: [-74.0817, 4.6097] }
+      });
+
+      await obtenerServicioPorId(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.jsonData.data.tecnico.tecnico_lon).toBe(-74.0817);
+      expect(res.jsonData.data.tecnico.tecnico_lat).toBe(4.6097);
+    });
+
     it('debe retornar 400 con id inválido', async () => {
       req.params = { id: 'abc' };
 
