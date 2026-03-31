@@ -12,6 +12,7 @@ import {
     Transaccion,
     CuentaTecnico,
     Usuario,
+    TrackingUbicacion,
 } from '../models/index.js';
 import { handleError } from '../utils/errorHandler.js';
 import { ValidationError, NotFoundError, ForbiddenError, ConflictError } from '../utils/errors/AppError.js';
@@ -1593,6 +1594,25 @@ export const obtenerServicioPorId = async (req, res) => {
         }
         // Administrador pasa sin restricción
 
+        // ----------------------------------------------------------------
+        // 4. Obtener la última coordenada del técnico para la solicitud
+        // ----------------------------------------------------------------
+        let tecnico_lat = null;
+        let tecnico_lon = null;
+
+        if (servicio.id_solicitud) {
+            const ultimaUbicacion = await TrackingUbicacion.findOne({
+                where: { id_solicitud: servicio.id_solicitud },
+                order: [['createdAt', 'DESC']],
+                attributes: ['ubicacion_actual']
+            });
+
+            if (ultimaUbicacion && ultimaUbicacion.ubicacion_actual && ultimaUbicacion.ubicacion_actual.coordinates) {
+                tecnico_lon = ultimaUbicacion.ubicacion_actual.coordinates[0];
+                tecnico_lat = ultimaUbicacion.ubicacion_actual.coordinates[1];
+            }
+        }
+
         logger.info(
             `obtenerServicioPorId: Servicio id=${idServicio} consultado por id_usuario=${req.usuario.id_usuario} (rol: ${rol})`
         );
@@ -1651,6 +1671,8 @@ export const obtenerServicioPorId = async (req, res) => {
                         nombre:            servicio.tecnico.datos_usuario?.nombre      ?? null,
                         apellido:          servicio.tecnico.datos_usuario?.apellido    ?? null,
                         telefono:          servicio.tecnico.datos_usuario?.telefono    ?? null,
+                        tecnico_lat:       tecnico_lat,
+                        tecnico_lon:       tecnico_lon,
                     }
                     : null,
                 transaccion: servicio.transaccion
