@@ -15,6 +15,7 @@ const mockModels = {
   Transaccion: { create: jest.fn(), update: jest.fn() },
   CuentaTecnico: { findOrCreate: jest.fn(), findOne: jest.fn() },
   Usuario: {},
+  TrackingUbicacion: { findOne: jest.fn() },
 };
 
 const mockSocketEmitter = {
