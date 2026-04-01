@@ -16,6 +16,7 @@ const mockModels = {
   CuentaTecnico: { findOrCreate: jest.fn(), findOne: jest.fn() },
   Usuario: {},
   TrackingUbicacion: { findOne: jest.fn() },
+  Garantia: { create: jest.fn() },
 };
 
 const mockSocketEmitter = {
@@ -283,6 +284,16 @@ describe('servicioController', () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(mockTransaction.commit).toHaveBeenCalled();
       expect(mockCuenta.increment).toHaveBeenCalled();
+      
+      // Verify Garantia was created automatically (30 days)
+      expect(mockModels.Garantia.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id_servicio: 8,
+          tiempo_validez: '30 días',
+        }),
+        expect.objectContaining({ transaction: mockTransaction })
+      );
+
       // Verify 15% commission: 180000 * 0.15 = 27000
       expect(res.jsonData.data.transaccion.comision_plataforma).toBe(27000);
       expect(res.jsonData.data.transaccion.monto_tecnico).toBe(153000);
