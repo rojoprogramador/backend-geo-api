@@ -13,6 +13,7 @@ import {
     CuentaTecnico,
     Usuario,
     TrackingUbicacion,
+    Garantia,
 } from '../models/index.js';
 import { handleError } from '../utils/errorHandler.js';
 import { ValidationError, NotFoundError, ForbiddenError, ConflictError } from '../utils/errors/AppError.js';
@@ -670,6 +671,25 @@ export const finalizarServicio = async (req, res) => {
                 total_comisiones_plataforma: comisionPlataforma,
             },
             { transaction: t }
+        );
+
+        // ----------------------------------------------------------------
+        // 14. Crear Garantía automática (Regla de 30 días)
+        // ----------------------------------------------------------------
+        const fechaExpiracion = new Date();
+        fechaExpiracion.setDate(fechaExpiracion.getDate() + 30);
+
+        await Garantia.create(
+            {
+                id_servicio:      idServicio,
+                tiempo_validez:   '30 días',
+                fecha_expiracion: fechaExpiracion,
+            },
+            { transaction: t }
+        );
+
+        logger.info(
+            `finalizarServicio: Garantía de 30 días creada para servicio id=${idServicio} — expira: ${fechaExpiracion.toISOString()}`
         );
 
         await t.commit();
@@ -1562,6 +1582,11 @@ export const obtenerServicioPorId = async (req, res) => {
                             as: 'medio_pago',
                             attributes: ['id_medioPago', 'descripcion'],
                         },
+                        {
+                            model: Garantia,
+                            as: 'garantia',
+                            attributes: ['id_garantia', 'tiempo_validez', 'fecha_expiracion', 'createdAt'],
+                        },
                     ],
                 },
             ],
@@ -1652,6 +1677,14 @@ export const obtenerServicioPorId = async (req, res) => {
                     : null,
                 medio_pago: servicio.medio_pago
                     ? { id_medioPago: servicio.medio_pago.id_medioPago, descripcion: servicio.medio_pago.descripcion }
+                    : null,
+                garantia: servicio.garantia
+                    ? {
+                        id_garantia:      servicio.garantia.id_garantia,
+                        tiempo_validez:   servicio.garantia.tiempo_validez,
+                        fecha_expiracion: servicio.garantia.fecha_expiracion,
+                        createdAt:        servicio.garantia.createdAt,
+                    }
                     : null,
                 cliente: servicio.cliente
                     ? {
