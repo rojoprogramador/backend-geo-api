@@ -503,7 +503,11 @@ describe('cotizacionController', () => {
         id_solicitud: 15,
         id_tecnico: 5,
         estado: 'PENDIENTE',
-        solicitud: { id_solicitud: 15, id_cliente: 3, id_estado: 3, tipo_servicio: 'PROGRAMADO' },
+        solicitud: {
+          id_solicitud: 15, id_cliente: 3, id_estado: 3, tipo_servicio: 'PROGRAMADO',
+          ubicacion_solicitud: { type: 'Point', coordinates: [-74.0817, 4.6097] },
+          direccion_servicio: 'Calle 10 #5-20',
+        },
       });
       mockModels.Cotizacion.update.mockResolvedValue([1]);
       mockModels.Solicitud.update.mockResolvedValue([1]);
@@ -524,6 +528,10 @@ describe('cotizacionController', () => {
       expect(emitCall.cotizacionData.datos.destino_logico).toBe('AGENDA');
       expect(emitCall.cotizacionData.datos.id_cita).toBe(100);
       expect(emitCall.cotizacionData.datos.id_servicio).toBeNull();
+      expect(emitCall.cotizacionData.datos.latitud).toBe(4.6097);
+      expect(emitCall.cotizacionData.datos.longitud).toBe(-74.0817);
+      expect(emitCall.cotizacionData.datos.direccion_servicio).toBe('Calle 10 #5-20');
+      expect(emitCall.cotizacionData.datos.id_estado).toBe(4);
     });
 
     it('debe emitir contrato con destino SERVICIO_TRACKING para INMEDIATO → 200', async () => {
@@ -536,7 +544,11 @@ describe('cotizacionController', () => {
         id_solicitud: 15,
         id_tecnico: 5,
         estado: 'PENDIENTE',
-        solicitud: { id_solicitud: 15, id_cliente: 3, id_estado: 3, tipo_servicio: 'INMEDIATO' },
+        solicitud: {
+          id_solicitud: 15, id_cliente: 3, id_estado: 3, tipo_servicio: 'INMEDIATO',
+          ubicacion_solicitud: { type: 'Point', coordinates: [-74.0817, 4.6097] },
+          direccion_servicio: 'Carrera 7 #12-30',
+        },
       });
       mockModels.Cotizacion.update.mockResolvedValue([1]);
       mockModels.Solicitud.update.mockResolvedValue([1]);
@@ -552,6 +564,10 @@ describe('cotizacionController', () => {
       expect(emitCall.cotizacionData.datos.destino_logico).toBe('SERVICIO_TRACKING');
       expect(emitCall.cotizacionData.datos.id_servicio).toBe(55);
       expect(emitCall.cotizacionData.datos.id_cita).toBeNull();
+      expect(emitCall.cotizacionData.datos.latitud).toBe(4.6097);
+      expect(emitCall.cotizacionData.datos.longitud).toBe(-74.0817);
+      expect(emitCall.cotizacionData.datos.direccion_servicio).toBe('Carrera 7 #12-30');
+      expect(emitCall.cotizacionData.datos.id_estado).toBe(4);
     });
 
     it('debe continuar sin error si WebSocket emit falla (best-effort)', async () => {

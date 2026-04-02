@@ -668,7 +668,7 @@ export const aceptarCotizacion = async (req, res) => {
                 {
                     model: Solicitud,
                     as:    'solicitud',
-                    attributes: ['id_solicitud', 'id_cliente', 'id_estado', 'tipo_servicio'],
+                    attributes: ['id_solicitud', 'id_cliente', 'id_estado', 'tipo_servicio', 'ubicacion_solicitud', 'direccion_servicio'],
                 },
             ],
             transaction: t,
@@ -785,7 +785,11 @@ export const aceptarCotizacion = async (req, res) => {
                     id_servicio: cotizacion.solicitud.tipo_servicio === 'INMEDIATO'
                         ? (servicioAsignado?.id_servicio ?? null)
                         : null,
+                    id_estado: ESTADO_ASIGNADA,
                     estado: 'ASIGNADA',
+                    latitud: cotizacion.solicitud.ubicacion_solicitud?.coordinates?.[1] ?? null,
+                    longitud: cotizacion.solicitud.ubicacion_solicitud?.coordinates?.[0] ?? null,
+                    direccion_servicio: cotizacion.solicitud.direccion_servicio,
                     destino_logico: cotizacion.solicitud.tipo_servicio === 'PROGRAMADO'
                         ? 'AGENDA'
                         : 'SERVICIO_TRACKING',
