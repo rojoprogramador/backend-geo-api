@@ -185,7 +185,58 @@ describe('servicioController', () => {
       expect(err).toBeInstanceOf(ConflictError);
     });
 
-    it('debe retornar 409 si ya existe servicio para la solicitud', async () => {
+    it('debe actualizar a EN_PROCESO si el servicio ya existe en estado ASIGNADA (idempotencia) → 201', async () => {
+      req.params = { id_solicitud: '15' };
+      req.usuario = { id_usuario: 10 };
+
+      const mockServicioExistente = { 
+        id_servicio: 8, id_estado: 4, update: jest.fn(),
+        id_solicitud: 15, id_cliente: 3, id_tecnico: 5, id_subcategoria: 2,
+        valor_total: 0, fecha_servicio: new Date(), createdAt: new Date()
+      };
+      mockModels.Tecnico.findOne.mockResolvedValue({ id_tecnico: 5 });
+      mockModels.Solicitud.findByPk.mockResolvedValue({
+        id_solicitud: 15, id_tecnico: 5, id_cliente: 3, id_subcategoria: 2,
+        id_estado: 4, estado: { descripcion: 'ASIGNADA' },
+      });
+      mockModels.Servicio.findOne.mockResolvedValue(mockServicioExistente);
+      mockModels.Solicitud.update.mockResolvedValue([1]);
+      mockModels.CuentaTecnico.findOrCreate.mockResolvedValue([{ id_cuenta: 1 }, false]);
+
+      await iniciarServicio(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(mockServicioExistente.update).toHaveBeenCalledWith(
+        expect.objectContaining({ id_estado: 5 }),
+        expect.any(Object)
+      );
+    });
+
+    it('debe ser idempotente si el servicio ya está en EN_PROCESO → 201', async () => {
+      req.params = { id_solicitud: '15' };
+      req.usuario = { id_usuario: 10 };
+
+      const mockServicioExistente = { 
+        id_servicio: 8, id_estado: 5, update: jest.fn(),
+        id_solicitud: 15, id_cliente: 3, id_tecnico: 5, id_subcategoria: 2,
+        valor_total: 0, fecha_servicio: new Date(), createdAt: new Date()
+      };
+      mockModels.Tecnico.findOne.mockResolvedValue({ id_tecnico: 5 });
+      mockModels.Solicitud.findByPk.mockResolvedValue({
+        id_solicitud: 15, id_tecnico: 5, id_cliente: 3, id_subcategoria: 2,
+        id_estado: 4, estado: { descripcion: 'ASIGNADA' },
+      });
+      mockModels.Servicio.findOne.mockResolvedValue(mockServicioExistente);
+      mockModels.Solicitud.update.mockResolvedValue([1]);
+      mockModels.CuentaTecnico.findOrCreate.mockResolvedValue([{ id_cuenta: 1 }, false]);
+
+      await iniciarServicio(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(mockServicioExistente.update).not.toHaveBeenCalled();
+    });
+
+    it('debe retornar 409 si el servicio ya existe en un estado final (COMPLETADA)', async () => {
       req.params = { id_solicitud: '15' };
       req.usuario = { id_usuario: 10 };
       mockModels.Tecnico.findOne.mockResolvedValue({ id_tecnico: 5 });
@@ -193,7 +244,7 @@ describe('servicioController', () => {
         id_solicitud: 15, id_tecnico: 5, id_estado: 4,
         estado: { descripcion: 'ASIGNADA' },
       });
-      mockModels.Servicio.findOne.mockResolvedValue({ id_servicio: 8 }); // already exists
+      mockModels.Servicio.findOne.mockResolvedValue({ id_servicio: 8, id_estado: 6 }); // COMPLETADA
 
       await iniciarServicio(req, res);
 
