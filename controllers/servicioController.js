@@ -189,42 +189,48 @@ export const iniciarServicio = async (req, res) => {
         }
 
         // ----------------------------------------------------------------
-        // 5. Verificar que no exista ya un Servicio para esta solicitud
-        //    (protección contra doble envío / idempotencia)
+        // 5. Verificar o crear el Servicio para esta solicitud
         // ----------------------------------------------------------------
-        const servicioExistente = await Servicio.findOne({
+        let servicio = await Servicio.findOne({
             where: { id_solicitud: idSolicitud },
             transaction: t,
         });
 
-        if (servicioExistente) {
-            await t.rollback();
-            throw new ConflictError(
-                `Esta solicitud ya tiene un servicio en curso (id_servicio: ${servicioExistente.id_servicio})`
+        if (servicio) {
+            // Si ya existe, verificar que esté en ASIGNADA (4) antes de mover a EN_PROCESO
+            if (servicio.id_estado !== ESTADO_ASIGNADA && servicio.id_estado !== ESTADO_EN_PROCESO) {
+                await t.rollback();
+                throw new ConflictError(
+                    `Esta solicitud ya tiene un servicio en estado ${servicio.id_estado} (id_servicio: ${servicio.id_servicio})`
+                );
+            }
+
+            // Si ya está EN_PROCESO, simplemente continuamos (idempotencia)
+            if (servicio.id_estado === ESTADO_ASIGNADA) {
+                await servicio.update({ id_estado: ESTADO_EN_PROCESO }, { transaction: t });
+                logger.info(
+                    `iniciarServicio: Servicio id=${servicio.id_servicio} actualizado a EN_PROCESO para solicitud id=${idSolicitud}`
+                );
+            }
+        } else {
+            // Si no existe (ej: servicios programados o flujo antiguo), se crea
+            servicio = await Servicio.create(
+                {
+                    id_solicitud:     idSolicitud,
+                    id_cliente:       solicitud.id_cliente,
+                    id_tecnico:       tecnico.id_tecnico,
+                    id_subcategoria:  solicitud.id_subcategoria,
+                    ubicacion_servicio: solicitud.ubicacion_solicitud,
+                    id_estado:        ESTADO_EN_PROCESO,
+                    valor_total:      0,
+                },
+                { transaction: t }
+            );
+
+            logger.info(
+                `iniciarServicio: Servicio id=${servicio.id_servicio} creado para solicitud id=${idSolicitud} — técnico id=${tecnico.id_tecnico}`
             );
         }
-
-        // ----------------------------------------------------------------
-        // 6. Crear el Servicio heredando datos de la solicitud
-        //    - La ubicacion_servicio se toma de ubicacion_solicitud
-        //    - id_estado = EN_PROCESO (5)
-        // ----------------------------------------------------------------
-        const nuevoServicio = await Servicio.create(
-            {
-                id_solicitud:     idSolicitud,
-                id_cliente:       solicitud.id_cliente,
-                id_tecnico:       tecnico.id_tecnico,
-                id_subcategoria:  solicitud.id_subcategoria,
-                ubicacion_servicio: solicitud.ubicacion_solicitud,
-                id_estado:        ESTADO_EN_PROCESO,
-                valor_total:      0,
-            },
-            { transaction: t }
-        );
-
-        logger.info(
-            `iniciarServicio: Servicio id=${nuevoServicio.id_servicio} creado para solicitud id=${idSolicitud} — técnico id=${tecnico.id_tecnico}`
-        );
 
         // ----------------------------------------------------------------
         // 7. Actualizar el estado de la Solicitud a EN_PROCESO (5)
@@ -270,10 +276,10 @@ export const iniciarServicio = async (req, res) => {
                     id_solicitud: idSolicitud,
                     id_cliente_usuario: clienteServicio.id_usuario,
                     servicioData: {
-                        id_servicio:  nuevoServicio.id_servicio,
+                        id_servicio:  servicio.id_servicio,
                         id_solicitud: idSolicitud,
                         id_tecnico:   tecnico.id_tecnico,
-                        id_estado:    nuevoServicio.id_estado,
+                        id_estado:    servicio.id_estado,
                     },
                 });
             }
@@ -285,15 +291,15 @@ export const iniciarServicio = async (req, res) => {
             success: true,
             message: 'Servicio iniciado exitosamente',
             data: {
-                id_servicio:     nuevoServicio.id_servicio,
-                id_solicitud:    nuevoServicio.id_solicitud,
-                id_cliente:      nuevoServicio.id_cliente,
-                id_tecnico:      nuevoServicio.id_tecnico,
-                id_subcategoria: nuevoServicio.id_subcategoria,
-                id_estado:       nuevoServicio.id_estado,
-                valor_total:     nuevoServicio.valor_total,
-                fecha_servicio:  nuevoServicio.fecha_servicio,
-                createdAt:       nuevoServicio.createdAt,
+                id_servicio:     servicio.id_servicio,
+                id_solicitud:    servicio.id_solicitud,
+                id_cliente:      servicio.id_cliente,
+                id_tecnico:      servicio.id_tecnico,
+                id_subcategoria: servicio.id_subcategoria,
+                id_estado:       servicio.id_estado,
+                valor_total:     servicio.valor_total,
+                fecha_servicio:  servicio.fecha_servicio,
+                createdAt:       servicio.createdAt,
             },
         });
 
