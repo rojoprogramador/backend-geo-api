@@ -24,7 +24,8 @@ const Notificacion = sequelize.define('Notificacion', {
             'SERVICIO_COMPLETADO',
             'PAGO_RECIBIDO',
             'CALIFICACION_RECIBIDA',
-            'VALIDACION_COMPLETADA'
+            'VALIDACION_COMPLETADA',
+            'PAGO_CONFIRMADO'
         ),
         allowNull: false
     },
