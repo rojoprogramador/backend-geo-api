@@ -1588,12 +1588,12 @@ export const obtenerServicioPorId = async (req, res) => {
                             as: 'medio_pago',
                             attributes: ['id_medioPago', 'descripcion'],
                         },
-                        {
-                            model: Garantia,
-                            as: 'garantia',
-                            attributes: ['id_garantia', 'tiempo_validez', 'fecha_expiracion', 'createdAt'],
-                        },
                     ],
+                },
+                {
+                    model: Garantia,
+                    as: 'garantia',
+                    attributes: ['id_garantia', 'tiempo_validez', 'fecha_expiracion', 'createdAt'],
                 },
             ],
         });
