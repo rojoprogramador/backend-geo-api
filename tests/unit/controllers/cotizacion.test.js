@@ -9,7 +9,7 @@ const mockModels = {
   Cliente: { findOne: jest.fn(), findByPk: jest.fn() },
   Tecnico: { findOne: jest.fn(), findByPk: jest.fn() },
   Cita: { findOne: jest.fn() },
-  Servicio: { findOne: jest.fn() },
+  Servicio: { findOne: jest.fn(), create: jest.fn() },
   TecnicoSolicitudQueue: { findOne: jest.fn(), update: jest.fn() },
   EstadoSolicitud: {},
   Usuario: {},
@@ -555,6 +555,7 @@ describe('cotizacionController', () => {
       mockModels.Tecnico.findByPk.mockResolvedValue({ id_tecnico: 5, id_usuario: 30 });
       mockModels.Cotizacion.findAll.mockResolvedValue([]);
       mockModels.Cita.findOne.mockResolvedValue(null);
+      mockModels.Servicio.create.mockResolvedValue({ id_servicio: 55 });
       mockModels.Servicio.findOne.mockResolvedValue({ id_servicio: 55 });
 
       await aceptarCotizacion(req, res);

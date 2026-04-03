@@ -646,6 +646,7 @@ export const aceptarCotizacion = async (req, res) => {
     const t = await sequelize.transaction();
 
     try {
+        let idServicioCreado = null;
         const idCotizacion = Number.parseInt(req.params.id);
 
         if (!idCotizacion || idCotizacion < 1) {
@@ -668,7 +669,15 @@ export const aceptarCotizacion = async (req, res) => {
                 {
                     model: Solicitud,
                     as:    'solicitud',
-                    attributes: ['id_solicitud', 'id_cliente', 'id_estado', 'tipo_servicio', 'ubicacion_solicitud', 'direccion_servicio'],
+                    attributes: [
+                        'id_solicitud',
+                        'id_cliente',
+                        'id_estado',
+                        'id_subcategoria',
+                        'tipo_servicio',
+                        'ubicacion_solicitud',
+                        'direccion_servicio'
+                    ],
                 },
             ],
             transaction: t,
@@ -748,6 +757,22 @@ export const aceptarCotizacion = async (req, res) => {
             }
         );
 
+        // ── 8.5 Crear el Servicio para solicitudes INMEDIATAS ──
+        // Esto evita crashes en la App del técnico al navegar al mapa (HU-16)
+        if (cotizacion.solicitud.tipo_servicio === 'INMEDIATO') {
+            const servicioAuto = await Servicio.create({
+                id_solicitud:       idSolicitud,
+                id_cliente:         cotizacion.solicitud.id_cliente,
+                id_tecnico:         idTecnico,
+                id_subcategoria:    cotizacion.solicitud.id_subcategoria,
+                ubicacion_servicio: cotizacion.solicitud.ubicacion_solicitud,
+                id_estado:          ESTADO_ASIGNADA,
+                valor_total:        cotizacion.valor_cotizacion || 0,
+            }, { transaction: t });
+            idServicioCreado = servicioAuto.id_servicio;
+            logger.info(`aceptarCotizacion: Servicio ${idServicioCreado} creado automáticamente para solicitud inmediata ${idSolicitud}`);
+        }
+
         logger.info(
             `aceptarCotizacion: Cliente ${cliente.id_cliente} aceptó cotización ` +
             `${idCotizacion} — técnico ${idTecnico} asignado a solicitud ${idSolicitud}`
@@ -782,9 +807,9 @@ export const aceptarCotizacion = async (req, res) => {
                     id_cita: cotizacion.solicitud.tipo_servicio === 'PROGRAMADO'
                         ? (citaAsignada?.id_cita ?? null)
                         : null,
-                    id_servicio: cotizacion.solicitud.tipo_servicio === 'INMEDIATO'
+                    id_servicio: idServicioCreado || (cotizacion.solicitud.tipo_servicio === 'INMEDIATO'
                         ? (servicioAsignado?.id_servicio ?? null)
-                        : null,
+                        : null),
                     id_estado: ESTADO_ASIGNADA,
                     estado: 'ASIGNADA',
                     latitud: cotizacion.solicitud.ubicacion_solicitud?.coordinates?.[1] ?? null,
