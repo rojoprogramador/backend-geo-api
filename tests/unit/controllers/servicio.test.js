@@ -702,6 +702,23 @@ describe('servicioController', () => {
 
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.jsonData.data.id_servicio).toBe(8);
+
+      // Verificamos que findByPk se llame con la jerarquía correcta
+      expect(mockModels.Servicio.findByPk).toHaveBeenCalledWith(
+        8,
+        expect.objectContaining({
+          include: expect.arrayContaining([
+            expect.objectContaining({ as: 'transaccion' }),
+            expect.objectContaining({ as: 'garantia' })
+          ])
+        })
+      );
+
+      // Verificamos que Garantia NO esté dentro de Transaccion
+      const findByPkCall = mockModels.Servicio.findByPk.mock.calls[0][1];
+      const transaccionInclude = findByPkCall.include.find((i) => i.as === 'transaccion');
+      const garantiaInsideTransaccion = transaccionInclude.include?.find((i) => i.as === 'garantia');
+      expect(garantiaInsideTransaccion).toBeUndefined();
     });
 
     it('debe retornar servicio como cliente propietario → 200', async () => {
