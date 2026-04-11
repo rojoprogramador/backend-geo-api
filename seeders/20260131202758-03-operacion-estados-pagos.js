@@ -12,7 +12,7 @@ export default {
       { id_estado: 5, descripcion: 'EN_PROCESO', activo: true, createdAt: new Date(), updatedAt: new Date() },
       { id_estado: 6, descripcion: 'COMPLETADA', activo: true, createdAt: new Date(), updatedAt: new Date() },
       { id_estado: 7, descripcion: 'CANCELADA', activo: true, createdAt: new Date(), updatedAt: new Date() }
-    ]);
+    ], { ignoreDuplicates: true });
 
     // 2. MEDIOS DE PAGO
     await queryInterface.bulkInsert('MedioPago', [
@@ -20,7 +20,7 @@ export default {
       { descripcion: 'TARJETA_CREDITO', activo: true, createdAt: new Date(), updatedAt: new Date() },
       { descripcion: 'TRANSFERENCIA', activo: true, createdAt: new Date(), updatedAt: new Date() },
       { descripcion: 'SALDO_APP', activo: true, createdAt: new Date(), updatedAt: new Date() }
-    ]);
+    ], { ignoreDuplicates: true });
 
     // 3. MOTIVOS DE CANCELACION
     await queryInterface.bulkInsert('MotivoCancelacion', [
@@ -29,7 +29,7 @@ export default {
       { descripcion: 'Cambio de fecha', activo: true, createdAt: new Date(), updatedAt: new Date() },
       { descripcion: 'Emergencia', activo: true, createdAt: new Date(), updatedAt: new Date() },
       { descripcion: 'Otro', activo: true, createdAt: new Date(), updatedAt: new Date() }
-    ]);
+    ], { ignoreDuplicates: true });
   },
 
   async down(queryInterface, Sequelize) {

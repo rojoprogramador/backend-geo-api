@@ -5,33 +5,35 @@ export default {
   async up(queryInterface, Sequelize) {
     // 1. CATEGORIAS PRINCIPALES
     await queryInterface.bulkInsert('Categoria', [
-      { 
-        id_categoria: 1, 
+      {
+        id_categoria: 1,
         nombre: 'Plomería',       // <--- AQUI VA EL TÍTULO CORTO
         descripcion: 'Servicios de fontanería, tuberías y desagües', // <--- DESCRIPCIÓN DETALLADA
         activo: true,
-        createdAt: new Date(), 
-        updatedAt: new Date() 
+        createdAt: new Date(),
+        updatedAt: new Date()
       },
-      { 
-        id_categoria: 2, 
-        nombre: 'Electricidad', 
-        descripcion: 'Instalaciones eléctricas, reparaciones y mantenimiento', 
+      {
+        id_categoria: 2,
+        nombre: 'Electricidad',
+        descripcion: 'Instalaciones eléctricas, reparaciones y mantenimiento',
         activo: true,
-        createdAt: new Date(), 
-        updatedAt: new Date() 
+        createdAt: new Date(),
+        updatedAt: new Date()
       },
-      { 
-        id_categoria: 3, 
-        nombre: 'Carpintería', 
-        descripcion: 'Trabajos en madera, muebles y estructuras', 
+      {
+        id_categoria: 3,
+        nombre: 'Carpintería',
+        descripcion: 'Trabajos en madera, muebles y estructuras',
         activo: true,
-        createdAt: new Date(), 
-        updatedAt: new Date() 
+        createdAt: new Date(),
+        updatedAt: new Date()
       }
-    ]);
+    ], { ignoreDuplicates: true });
 
     // 2. SUBCATEGORIAS
+    const [subcats] = await queryInterface.sequelize.query('SELECT COUNT(*) AS total FROM "Subcategoria"');
+    if (Number.parseInt(subcats[0].total) > 0) return;
     await queryInterface.bulkInsert('Subcategoria', [
       // --- Plomería (ID 1) ---
       { 
@@ -95,12 +97,12 @@ export default {
         updatedAt: new Date() 
       },
       { 
-        nombre: 'Armado de muebles', 
+        nombre: 'Armado de muebles',
         descripcion: 'Ensamblaje de muebles modulares, closets y escritorios',
-        id_categoria: 3, 
+        id_categoria: 3,
         activo: true,
-        createdAt: new Date(), 
-        updatedAt: new Date() 
+        createdAt: new Date(),
+        updatedAt: new Date()
       }
     ]);
   },
