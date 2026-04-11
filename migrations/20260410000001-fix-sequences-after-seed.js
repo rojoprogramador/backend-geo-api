@@ -18,7 +18,7 @@ export default {
       await queryInterface.sequelize.query(`
         SELECT setval(
           pg_get_serial_sequence('"${table}"', '${column}'),
-          COALESCE(MAX("${column}"), 0)
+          GREATEST(COALESCE(MAX("${column}"), 1), 1)
         )
         FROM "${table}";
       `);
